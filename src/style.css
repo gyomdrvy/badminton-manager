@@ -36,3 +36,13 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .queueWaiting em{background:#d4d9e0;border-color:#bfc6d0;color:#626c79}
 .panel,.pool,.team{background:#f8fbff;border-color:#bad5eb}
 @media(max-width:690px){.queueMeta{align-items:flex-start!important}}
+
+.finalRankingHead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:28px}.finalRankingHead h3{margin:0}.finalRankingHead span{background:#102640;color:#adff19;border-radius:20px;padding:7px 12px;font-weight:800;font-size:13px}.finalRanking{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:9px;margin-top:14px}.finalRankRow{display:flex;align-items:center;gap:11px;border:1px solid #b4d4ed;border-radius:11px;padding:11px 13px;background:#f7fbff;min-width:0}.finalRankRow.rankKnown{background:#eaf9ff;border-left:4px solid #8ee900}.finalRankRow.rankPending{background:#e4e9ef;color:#687688}.rankNumber{min-width:49px;font-size:18px;color:#143b60}.rankColor{width:12px;height:24px;border-radius:4px;flex-shrink:0}.finalRankRow span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}.finalRankRow b{font-size:10px;color:#397b00}.finalComplete{margin-top:16px;border-radius:12px;background:#d9ffa6;color:#183400;padding:16px;font-weight:900;text-align:center}
+
+/* Terrain de badminton vu du dessus : filet central, lignes latérales simple/double,
+   lignes de service courtes, longues pour le double, et lignes centrales de service. */
+.pitch:before{display:none!important}
+.badmintonLines{position:absolute;inset:8px 5%;width:90%;height:calc(100% - 16px);z-index:1;pointer-events:none;overflow:visible}
+.badmintonLines rect,.badmintonLines path{fill:none;stroke:#eaf8ff;stroke-width:2.4;vector-effect:non-scaling-stroke}
+.badmintonLines .net{stroke:#f8ffff;stroke-width:4;stroke-dasharray:5 3}
+.courtTeam,.courtScore,.courtControls,.vsBall,.courtBottom,.courtEmpty{z-index:3}
