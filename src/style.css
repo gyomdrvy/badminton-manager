@@ -101,3 +101,12 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 
 /* Classements intégrés : intitulés directement au-dessus des matchs décisifs. */
 .classificationMatchTitle{position:absolute;z-index:3;text-align:center;color:#164b75;font-size:13px;font-weight:900;background:#d1e8fb;border:1px solid #a6cce8;border-radius:7px;padding:7px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Tableau plus compact, sans modifier la taille des textes et des scores. */
+.challongeTools{padding:9px 12px}
+.challongeRoundTitle{padding:7px 8px}
+.challongeMatchHead{padding:5px 8px}
+.challongeParticipant{padding:7px 8px;min-height:34px}
+.classificationMatchTitle{padding:5px 7px;font-size:12px}
+.bracketLegend{margin:10px 0}
+.bracketSections{margin-top:10px}
