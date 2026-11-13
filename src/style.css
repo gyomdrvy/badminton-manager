@@ -52,3 +52,15 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 
 /* Tableau final horizontal, adapté aux gestes tactiles */
 .bracketScroll{overflow-x:auto;overflow-y:hidden;max-width:100%;background:#222831;border:1px solid #43505e;border-radius:14px;scrollbar-color:#b0ff00 #28313a;scrollbar-width:thin;overscroll-behavior-x:contain;touch-action:pan-x pan-y;padding:12px}.bracketCanvas{width:max-content;min-width:100%;padding-bottom:12px}.bracketColumns{display:flex;align-items:stretch;gap:22px}.bracketColumn{width:268px;flex:0 0 268px;border-right:1px solid #4a535e;padding-right:18px;display:flex;flex-direction:column;gap:16px}.bracketColumnTitle{background:#39424c;color:white;padding:12px;text-align:center;font-weight:900;border-radius:6px}.bracketColumnSubtitle{font-size:12px;color:#c1cbd5}.bracketGroup{display:flex;flex-direction:column;gap:13px;border-left:3px solid #b0ff00;padding-left:8px;margin-bottom:12px}.bracketGroupTitle{font-size:11px;color:#c8ff4a;letter-spacing:.04em;font-weight:900}.bracketMatch{position:relative;border-radius:5px;background:#48515c;border:1px solid #68727d;overflow:visible;color:#fff}.bracketMatch:after{content:'';position:absolute;left:100%;top:50%;width:19px;border-top:2px solid #cbd5df}.bracketMatchLabel{padding:5px 8px;color:#b9c6d3;font-size:10px;background:#333d48}.bracketPlayer{display:flex;align-items:center;gap:7px;padding:8px;border-bottom:1px solid #78828c;min-height:36px;font-size:13px}.bracketPlayer:last-child{border-bottom:0}.bracketPlayer i{width:6px;height:20px;border-radius:2px;flex-shrink:0}.bracketPlayer span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bracketPlayer b{font-size:14px}.bracketWinner{background:#425e36;color:#e3ffba}.bracketDirect{background:#354454;color:#cbd9e7;border:1px dashed #758598;padding:12px;border-radius:6px;font-size:12px}.bracketHint{color:#57738b;font-size:13px;font-weight:700;text-align:center;margin:9px 0 20px}
+
+/* Tableau final : palette claire et contrastée, adaptée aux tablettes */
+.bracketScroll{background:#e9f4ff;border:1px solid #a9cbe8;scrollbar-color:#2586cb #d8ebfa}
+.bracketColumn{border-right:1px solid #c0d9ef}
+.bracketColumnTitle{background:#d1e8fb;color:#113e66;border:1px solid #a6cce8}
+.bracketColumnSubtitle{color:#517594}
+.bracketMatch{background:#fff;border:1px solid #aac8df;color:#173c5d;box-shadow:0 2px 7px #14507b12}
+.bracketMatch:after{border-top-color:#5b95c2}
+.bracketMatchLabel{background:#e6f2fc;color:#37688f;line-height:1.5}
+.bracketMatchLabel strong{color:#0d5186}
+.bracketPlayer{border-bottom-color:#d5e5f3;color:#143f62}
+.bracketWinner{background:#e4ffc5;color:#214e16}
