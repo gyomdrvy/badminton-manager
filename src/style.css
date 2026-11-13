@@ -98,3 +98,6 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .bracketSections{display:block}
 .unifiedViewport{height:min(78vh,900px);min-height:460px;overflow:auto;touch-action:pan-x pan-y}
 .unifiedSectionHeading{position:absolute;height:33px;padding:7px 12px;background:#cde5f8;color:#173e62;font-weight:900;font-size:15px;border-bottom:1px solid #a4c9e5}
+
+/* Classements intégrés : intitulés directement au-dessus des matchs décisifs. */
+.classificationMatchTitle{position:absolute;z-index:3;text-align:center;color:#164b75;font-size:13px;font-weight:900;background:#d1e8fb;border:1px solid #a6cce8;border-radius:7px;padding:7px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

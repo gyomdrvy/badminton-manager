@@ -98,34 +98,49 @@ function BracketSection({title,stages,teams}){
 // Tableau principal type Challonge : placement calculé à partir des vainqueurs uniquement.
 function UnifiedBracket({stages,teams,classificationPaths}){
  const viewport=useRef(null),[zoom,setZoom]=useState(1);
- const W=260,GAP=100,STEP=154,TOP=76,SECTION_GAP=100;
- const all=stages.flatMap(stage=>stage.matches);
+ const W=260,GAP=100,STEP=154,TOP=94,SECTION_GAP=92,CARD_H=98;
  const roots=[{path:'F',label:'🏆 Tableau principal'},...classificationPaths.map(x=>({path:x.path,label:x.label}))];
- const sections=[];let offset=0,maxCols=1;
+ const sections=[];let offset=0;
  for(const root of roots){
-  const columns=stages.map(stage=>stage.matches.filter(m=>{const path=m.path||'';return path===root.path||(path.startsWith(root.path)&&/^W+$/.test(path.slice(root.path.length)))})).filter(c=>c.length);
+  // Les colonnes correspondent aux tours du tableau principal : toutes les finales
+  // de classement sont donc alignées verticalement avec la finale principale.
+  const columns=stages.map((stage,stageIndex)=>({stageIndex,entries:stage.matches.filter(m=>{
+   const path=m.path||'';
+   return path===root.path||(path.startsWith(root.path)&&/^W+$/.test(path.slice(root.path.length)));
+  })})).filter(c=>c.entries.length);
   if(!columns.length)continue;
-  maxCols=Math.max(maxCols,columns.length);
   const positions=new Map();
-  columns.forEach((entries,col)=>entries.forEach((entry,i)=>{
+  columns.forEach(({stageIndex,entries})=>entries.forEach((entry,i)=>{
    const sources=entry.slots.map(slot=>String(slot.label||'').match(/^Vainqueur du match (\d+)$/i)).filter(Boolean).map(m=>positions.get(Number(m[1]))).filter(Boolean);
-   const center=sources.length===2?(sources[0].y+sources[1].y)/2:sources.length===1?sources[0].y:TOP+i*STEP;
-   positions.set(entry.number,{x:col*(W+GAP),y:center,entry});
+   const y=sources.length===2?(sources[0].y+sources[1].y)/2:sources.length===1?sources[0].y:TOP+i*STEP;
+   positions.set(entry.number,{x:stageIndex*(W+GAP),y,entry,stageIndex});
   }));
   const nodes=[...positions.values()];
-  const height=Math.max(260,...nodes.map(p=>p.y+125))+20;
-  sections.push({root,columns,nodes,positions,offset,height});offset+=height+SECTION_GAP;
+  // On évite que les branches secondaires se superposent, sans changer leur tour.
+  const minY=Math.min(...nodes.map(n=>n.y));
+  for(const n of nodes)n.y=n.y-minY+TOP;
+  const sectionHeight=Math.max(240,...nodes.map(n=>n.y+CARD_H))+42;
+  const lastStage=Math.max(...nodes.map(n=>n.stageIndex));
+  const finalNodes=nodes.filter(n=>n.stageIndex===lastStage);
+  sections.push({root,columns,nodes,positions,offset,height:sectionHeight,finalNodes});
+  offset+=sectionHeight+SECTION_GAP;
  }
- const width=Math.max(600,maxCols*(W+GAP)-GAP+35),height=Math.max(330,offset-SECTION_GAP+25);
+ const width=Math.max(600,stages.length*(W+GAP)-GAP+35),height=Math.max(330,offset-SECTION_GAP+25);
  const lines=[];
  for(const section of sections)for(const node of section.nodes)for(const slot of node.entry.slots){
   const m=String(slot.label||'').match(/^Vainqueur du match (\d+)$/i);if(!m)continue;
   const source=section.positions.get(Number(m[1]));if(!source||source.x>=node.x)continue;
-  const x1=source.x+W,y1=section.offset+source.y+45,x2=node.x,y2=section.offset+node.y+45,mid=(x1+x2)/2;
+  const x1=source.x+W,y1=section.offset+source.y+CARD_H/2,x2=node.x,y2=section.offset+node.y+CARD_H/2,mid=(x1+x2)/2;
   lines.push(`M${x1},${y1} H${mid} V${y2} H${x2}`);
  }
  const fit=()=>{const available=viewport.current?.clientWidth||900;setZoom(Math.max(.15,Math.min(1,(available-30)/width)))};
- return <div className="challongeWrap"><div className="challongeTools"><strong>🏆 Tableau complet · classement intégral</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} tabIndex="0" role="region" aria-label="Tableau complet, déplaçable horizontalement et verticalement"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{lines.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(section=><React.Fragment key={section.root.path}><div className="unifiedSectionHeading" style={{top:section.offset,left:0,width}}>{section.root.label}</div>{section.columns.map((col,i)=><div key={i} className="challongeRoundTitle" style={{top:section.offset+38,left:i*(W+GAP),width:W}}>{section.root.path==='F'?(i===section.columns.length-1?'Finale':i===section.columns.length-2?'Demi-finales':`Tour ${i+1}`):i===section.columns.length-1?'Match de classement':`Tour ${i+1}`}</div>)}{section.nodes.map(({x,y,entry})=>{const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div key={entry.number} className="challongeMatch" style={{left:x,top:section.offset+y,width:W}}><div className="challongeMatchHead">Match {entry.number}<span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j?'b':'a']||slot.id;return <div key={j} className={'challongeParticipant '+(winner===id&&winner?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||slot.label||'À déterminer'}</span><b>{m?.status==='done'?(j?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau · glisser horizontalement ou verticalement · zoom pour voir l'ensemble.</p></div>;
+ const placementLabel=(section)=>{
+  const match=section.finalNodes[0];
+  if(!match)return section.root.label;
+  const label=section.root.label.replace(/^🏸\s*/, '').replace(/^Classement\s*[—–-]\s*/i,'');
+  return /^places?\s+/i.test(label)?`Classement ${label}`:section.root.label;
+ };
+ return <div className="challongeWrap"><div className="challongeTools"><strong>🏆 Tableau complet · classement intégral</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} tabIndex="0" role="region" aria-label="Tableau complet, déplaçable horizontalement et verticalement"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{lines.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(section=><React.Fragment key={section.root.path}>{section.root.path==='F'&&<><div className="unifiedSectionHeading" style={{top:section.offset,left:0,width}}>{section.root.label}</div>{section.columns.map(({stageIndex},i)=><div key={stageIndex} className="challongeRoundTitle" style={{top:section.offset+38,left:stageIndex*(W+GAP),width:W}}>{i===section.columns.length-1?'Finale':i===section.columns.length-2?'Demi-finales':`Tour ${stageIndex+1}`}</div>)}</>}{section.root.path!=='F'&&section.finalNodes.map(node=><div key={'label-'+node.entry.number} className="classificationMatchTitle" style={{left:node.x,top:section.offset+node.y-35,width:W}}>{placementLabel(section)}</div>)}{section.nodes.map(({x,y,entry})=>{const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div key={entry.number} className="challongeMatch" style={{left:x,top:section.offset+y,width:W}}><div className="challongeMatchHead">Match {entry.number}<span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j?'b':'a']||slot.id;return <div key={j} className={'challongeParticipant '+(winner===id&&winner?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||slot.label||'À déterminer'}</span><b>{m?.status==='done'?(j?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau · glisser horizontalement ou verticalement · zoom pour voir l'ensemble.</p></div>;
 }
 
 function App(){const [s,setS]=useState(load),[name,setName]=useState(''),[tab,setTab]=useState('terrains'),[editing,setEditing]=useState({}),[message,setMessage]=useState('');useEffect(()=>localStorage.setItem('badminton-v1',JSON.stringify(s)),[s]);const teams=Object.fromEntries(s.teams.map(t=>[t.id,t]));const active=s.matches.filter(m=>m.phase===(s.phase==='final'?'final':'pool'));const waiting=active.filter(m=>m.status==='waiting'||m.status==='blocked');const done=active.filter(m=>m.status==='done');const poolGroups=Array.from({length:s.pools},(_,p)=>s.teams.filter(t=>s.poolAssignments?.[t.id]===p));const announce=x=>{setMessage(x);setTimeout(()=>setMessage(''),4500)};
