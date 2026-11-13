@@ -64,3 +64,21 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .bracketMatchLabel strong{color:#0d5186}
 .bracketPlayer{border-bottom-color:#d5e5f3;color:#143f62}
 .bracketWinner{background:#e4ffc5;color:#214e16}
+
+/* Version : tableaux séparés et connexions blanches */
+.bracketSections{display:flex;flex-direction:column;gap:22px;margin-top:18px}
+.bracketSeparate{border:1px solid #a7cae5;background:#e4f2ff;border-radius:13px;overflow:hidden}
+.bracketSeparateTitle{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;background:#d0e8fa;color:#153c5e}
+.bracketSeparateTitle h4{margin:0;font-size:16px;color:#153c5e}
+.bracketSeparateTitle span{font-size:12px;color:#456f91}
+.classificationHeading{margin:14px 0 0!important;color:#153c5e}
+.bracketSeparate .bracketScroll{border:0;border-radius:0;background:linear-gradient(130deg,#b7d8f0,#dceeff);padding:20px;overflow-x:auto;overflow-y:hidden}
+.bracketBoard{position:relative;width:max-content;min-width:100%;isolation:isolate}
+.bracketBoard .bracketColumns{position:relative;z-index:1;gap:70px;align-items:flex-start}
+.bracketBoard .bracketColumn{width:250px;flex:0 0 250px;padding:0;border:0;gap:12px}
+.bracketColumnMatches{display:flex;flex-direction:column;gap:22px;padding:12px 0}
+.bracketBoard .bracketMatch{margin:0;border-color:#b2cfe5;box-shadow:0 2px 8px #245b831a}
+.bracketBoard .bracketMatch:after{display:none}
+.bracketWires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:0;pointer-events:none}
+.bracketWires path{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px #3c668a)}
+@media(max-width:700px){.bracketSeparateTitle{align-items:flex-start;flex-direction:column}.bracketSeparate .bracketScroll{padding:12px}}
