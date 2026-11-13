@@ -1,3 +1,5 @@
+import headerMark from './assets/header-mark.png';
+
 import React,{useEffect,useMemo,useRef,useState} from 'react';import{createRoot}from'react-dom/client';import './style.css';
 const palette=['#2563eb','#e11d48','#d97706','#16a34a','#9333ea','#0891b2','#ea580c','#be185d','#4f46e5','#65a30d','#dc2626','#0d9488','#7c3aed','#ca8a04','#0284c7','#b45309'];
 const uid=()=>Math.random().toString(36).slice(2,10);const initialNames=['Volants Bleus','Smashers','Éclairs','Dragons','Faucons','Titans','Rockets','Panthers'];
@@ -153,82 +155,143 @@ function UnifiedBracket({stages,teams,classificationPaths}){
  return <div className="challongeWrap"><div className="challongeTools"><strong>🏆 Tableau complet · classement intégral</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} tabIndex="0" role="region" aria-label="Tableau complet, déplaçable horizontalement et verticalement"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{lines.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(section=><React.Fragment key={section.root.path}>{section.root.path==='F'&&<><div className="unifiedSectionHeading" style={{top:section.offset,left:0,width}}>{section.root.label}</div>{section.columns.map(({stageIndex},i)=><div key={stageIndex} className="challongeRoundTitle" style={{top:section.offset+38,left:stageIndex*(W+GAP),width:W}}>{i===section.columns.length-1?'Finale':i===section.columns.length-2?'Demi-finales':`Tour ${stageIndex+1}`}</div>)}</>}{section.root.path!=='F'&&section.finalNodes.map(node=><div key={'label-'+node.entry.number} className="classificationMatchTitle" style={{left:node.x,top:section.offset+node.y-35,width:W}}>{placementLabel(section)}</div>)}{section.nodes.map(({x,y,entry})=>{const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div key={entry.number} className="challongeMatch" style={{left:x,top:section.offset+y,width:W}}><div className="challongeMatchHead">Match {entry.number}<span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j?'b':'a']||slot.id;return <div key={j} className={'challongeParticipant '+(winner===id&&winner?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||slot.label||'À déterminer'}</span><b>{m?.status==='done'?(j?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau · glisser horizontalement ou verticalement · zoom pour voir l'ensemble.</p></div>;
 }
 
-// Double élimination : tableau des vainqueurs et tableau des perdants.
-// Les équipes sorties à deux défaites sont ensuite classées par rencontres supplémentaires.
+// Tableau préconstruit : chaque rencontre possède deux sources explicites.
+// Les perdants des tours principaux entrent dans le tableau de rattrapage.
 function doubleMatch(a,b,track,round){return {id:uid(),a,b,phase:'final',track,round,status:'waiting',sa:'',sb:'',court:null}}
+function newDoubleNode(state,track,round,sourceA,sourceB,extra={}){
+ const m={...doubleMatch(null,null,track,round),number:state.matches.length+1,sourceA,sourceB,...extra,status:'blocked'};
+ state.matches.push(m);return m;
+}
+const direct=id=>({team:id});
+const from=(m,outcome)=>({id:m.id,outcome});
 function doubleStart(state,ids){
- state.double={upper:[...ids],lower:[],upperRound:0,lowerRound:0,eliminated:[],stage:'upper',champion:null,runner:null};
- return doubleAdvance(state);
+ if(!isPower(ids.length)){throw Error('La double élimination nécessite 2, 4, 8, 16 ou 32 équipes pour ce tableau.');}
+ state.double={planned:true,champion:null,runner:null};
+ const wb=[];let entrants=seedOrder(ids.length).map(i=>direct(ids[i-1]));
+ for(let r=0;entrants.length>1;r++){
+  let round=[];for(let i=0;i<entrants.length;i+=2)round.push(newDoubleNode(state,'upper',r,entrants[i],entrants[i+1]));
+  wb.push(round);entrants=round.map(m=>from(m,'winner'));
+ }
+ const lb=[];
+ if(ids.length>2){
+  let arrivals=wb[0].map(m=>from(m,'loser'));
+  let prev=[];const first=[];
+  for(let i=0;i<arrivals.length;i+=2)first.push(newDoubleNode(state,'lower',0,arrivals[i],arrivals[i+1]));
+  lb.push(first);prev=first;
+  for(let r=1;r<wb.length;r++){
+   // Les perdants du tour WB r rejoignent les survivants du rattrapage.
+   const inject=[];
+   for(let i=0;i<prev.length;i++)inject.push(newDoubleNode(state,'lower',2*r-1,from(prev[i],'winner'),from(wb[r][i],'loser')));
+   lb.push(inject);prev=inject;
+   if(r<wb.length-1){
+    const compact=[];
+    for(let i=0;i<prev.length;i+=2)compact.push(newDoubleNode(state,'lower',2*r,from(prev[i],'winner'),from(prev[i+1],'winner')));
+    lb.push(compact);prev=compact;
+   }
+  }
+ }
+ // Pour n=2, le perdant du seul match WB arrive directement en finale.
+ const lastLower=lb.length?lb[lb.length-1][0]:wb[0][0];
+ const lowerSource=lb.length?from(lastLower,'winner'):from(lastLower,'loser');
+ const gf=newDoubleNode(state,'grand',0,from(wb.at(-1)[0],'winner'),lowerSource);
+ const reset=newDoubleNode(state,'grand',1,from(gf,'loser'),from(gf,'winner'),{conditionalReset:true});
+ // Matches de classement préconstruits pour chaque cohorte d'élimination.
+ const eliminationGroups=lb.map(round=>round.map(m=>from(m,'loser'))).filter(x=>x.length);
+ // Le dernier éliminé du repêchage est 3e, l'avant-dernier 4e.
+ // Les places 3-4 sont jouées, même si les équipes ont déjà deux défaites.
+ if(eliminationGroups.length>=2){
+  const last=eliminationGroups.pop(),previous=eliminationGroups.pop();
+  if(last.length===1&&previous.length===1){newDoubleNode(state,'places',0,last[0],previous[0],{place:3});}
+  else{eliminationGroups.push(previous,last)}
+ }
+ let nextPlace=5;
+ for(const group of eliminationGroups.reverse()){
+  if(group.length===1){state.double[`position${nextPlace}`]=group[0];nextPlace++;continue;}
+  // Mini-tableau de classement à élimination puis finales de classement.
+  const build=(slots,firstPlace,depth)=>{
+   if(slots.length===2){newDoubleNode(state,'places',depth,slots[0],slots[1],{place:firstPlace});return;}
+   const semis=[];for(let i=0;i<slots.length;i+=2)semis.push(newDoubleNode(state,'places',depth,slots[i],slots[i+1]));
+   build(semis.map(m=>from(m,'winner')),firstPlace,depth+1);
+   build(semis.map(m=>from(m,'loser')),firstPlace+slots.length/2,depth+1);
+  };
+  build(group,nextPlace,0);nextPlace+=group.length;
+ }
+ doubleAdvance(state);return state;
 }
 function doubleAdvance(state){
- const d=state.double;if(!d)return state;
- const ongoing=state.matches.some(m=>m.phase==='final'&&m.status!=='done');if(ongoing)return state;
- const last=state.matches.filter(m=>m.phase==='final'&&m.status==='done'&&m.doubleStage===d.stage);
- const winners=last.map(m=>+m.sa>+m.sb?m.a:m.b),losers=last.map(m=>+m.sa>+m.sb?m.b:m.a);
- if(d.stage==='upperMatches'){
-  d.upper=[...(d.upperBye||[]),...winners];d.lower.push(...losers);d.upperRound++;
- }else if(d.stage==='lowerMatches'){
-  d.lower=[...(d.lowerBye||[]),...winners];d.eliminated.push(...losers);d.lowerRound++;
- }else if(d.stage==='grandFinal'){
-  const m=last[0];const w=+m.sa>+m.sb?m.a:m.b;
-  if(w===d.upper[0]){d.champion=w;d.runner=d.lower[0];d.stage='placements'}
-  else {d.stage='reset';const x=doubleMatch(d.upper[0],d.lower[0],'Grande finale — réinitialisation',d.upperRound+d.lowerRound+1);x.doubleStage='reset';state.matches.push(x);return state}
- }else if(d.stage==='reset'){
-  const m=last[0];d.champion=+m.sa>+m.sb?m.a:m.b;d.runner=d.champion===m.a?m.b:m.a;d.stage='placements';
- }else if(d.stage==='placementMatches'){
-  for(const m of last){const win=+m.sa>+m.sb?m.a:m.b,lose=win===m.a?m.b:m.a;state.finalPositions[m.place]=win;state.finalPositions[m.place+1]=lose}d.stage='complete';return state;
+ if(!state.double?.planned)return state;
+ const byId=Object.fromEntries(state.matches.map(m=>[m.id,m]));
+ const resolve=src=>{
+  if(!src)return null;if(src.team)return src.team;
+  const m=byId[src.id];if(!m||m.status!=='done')return null;
+  const w=Number(m.sa)>Number(m.sb)?m.a:m.b;
+  return src.outcome==='winner'?w:(w===m.a?m.b:m.a);
+ };
+ let changed=true;
+ while(changed){changed=false;
+  for(const m of state.matches.filter(m=>m.phase==='final'&&m.status==='blocked')){
+   if(m.conditionalReset){
+    const gf=state.matches.find(x=>x.track==='grand'&&x.round===0);
+    if(gf?.status==='done'){
+     const upper=resolve(gf.sourceA),winner=Number(gf.sa)>Number(gf.sb)?gf.a:gf.b;
+     if(winner===upper){m.status='skipped';changed=true;continue;}
+    }
+   }
+   const a=resolve(m.sourceA),b=resolve(m.sourceB);
+   if(a&&b){m.a=a;m.b=b;m.status='waiting';changed=true;}
+  }
  }
- if(d.stage==='placements'){
-  state.finalPositions[1]=d.champion;state.finalPositions[2]=d.runner;
-  const order=[...d.eliminated].reverse().filter(id=>id!==d.champion&&id!==d.runner);
-  // Derniers éliminés = mieux classés ; confrontation pour chaque paire de places.
-  const pairs=[];for(let i=0;i<order.length;i+=2){if(order[i+1]){let m=doubleMatch(order[i],order[i+1],`Classement ${i+3}–${i+4}`,d.upperRound+d.lowerRound+2);m.place=i+3;m.doubleStage='placementMatches';pairs.push(m)}else state.finalPositions[i+3]=order[i]}
-  state.matches.push(...pairs);d.stage=pairs.length?'placementMatches':'complete';return state;
+ // Le classement est actualisé automatiquement à mesure que les matches finissent.
+ const gf=state.matches.find(m=>m.track==='grand'&&m.round===0);
+ const reset=state.matches.find(m=>m.conditionalReset);
+ const title=reset?.status==='done'?reset:reset?.status==='skipped'?gf:null;
+ if(title?.status==='done'){
+  const winner=Number(title.sa)>Number(title.sb)?title.a:title.b;
+  state.finalPositions[1]=winner;state.finalPositions[2]=winner===title.a?title.b:title.a;
  }
- if(d.stage==='complete')return state;
- // Alternance des tableaux pour qu'aucune équipe ne joue simultanément.
- const play=(ids,track,stage,round)=>{const bye=ids.length%2?[ids[0]]:[],pool=ids.slice(bye.length);const out=[];for(let i=0;i<pool.length;i+=2){let m=doubleMatch(pool[i],pool[i+1],track,round);m.doubleStage=stage;out.push(m)}state.matches.push(...out);d.stage=stage;if(stage==='upperMatches')d.upperBye=bye;else d.lowerBye=bye;};
- if(d.upper.length>1){play(d.upper,'Tableau principal','upperMatches',d.upperRound);return state}
- if(d.lower.length>1){play(d.lower,'Tableau des perdants','lowerMatches',d.lowerRound);return state}
- if(d.upper.length===1&&d.lower.length===1){play([d.upper[0],d.lower[0]],'Grande finale','grandFinal',d.upperRound+d.lowerRound);return state}
- // Si le tableau inférieur est vide, les défaites du prochain tour l'alimenteront.
+ for(const m of state.matches.filter(m=>m.track==='places'&&m.place&&m.status==='done')){
+  const winner=Number(m.sa)>Number(m.sb)?m.a:m.b;
+  state.finalPositions[m.place]=winner;state.finalPositions[m.place+1]=winner===m.a?m.b:m.a;
+ }
  return state;
 }
 function DoubleBracket({matches,teams}){
  const viewport=useRef(null),[zoom,setZoom]=useState(1);
- const W=226,H=90,G=52,ROW=112,TOP=60,SECTION=28;
- const ordered=[{key:'upper',title:'Tableau principal — vainqueurs',test:m=>m.doubleStage==='upperMatches'},
- {key:'lower',title:'Tableau des perdants — rattrapage',test:m=>m.doubleStage==='lowerMatches'},
- {key:'grand',title:'Grande finale',test:m=>['grandFinal','reset'].includes(m.doubleStage)},
- {key:'places',title:'Matchs de classement',test:m=>m.doubleStage==='placementMatches'}];
- let yOffset=0;const sections=[];const all=matches.filter(m=>m.phase==='final');
- for(const spec of ordered){
-  const ms=all.filter(spec.test);if(!ms.length)continue;
+ const W=226,H=90,G=55,ROW=112,TOP=63;
+ const specs=[{key:'upper',title:'Tableau principal — vainqueurs'},
+ {key:'lower',title:'Tableau des perdants — rattrapage'},
+ {key:'grand',title:'Grande finale'},
+ {key:'places',title:'Matchs de classement'}];
+ let yOffset=0;const sections=[];
+ for(const spec of specs){
+  const ms=matches.filter(m=>m.track===spec.key);if(!ms.length)continue;
   const rounds=[...new Set(ms.map(m=>m.round))].sort((a,b)=>a-b);
   const nodes=[];let maxY=TOP;
-  rounds.forEach((r,col)=>{const roundMatches=ms.filter(m=>m.round===r);
-   roundMatches.forEach((m,i)=>{const spacing=spec.key==='upper'?ROW*2**col:ROW;
+  rounds.forEach((r,col)=>{
+   const current=ms.filter(m=>m.round===r);
+   current.forEach((m,i)=>{const spacing=spec.key==='upper'?ROW*2**col:ROW;
     const y=TOP+i*spacing+(spec.key==='upper'&&col>0?(spacing-ROW)/2:0);
     nodes.push({m,x:col*(W+G),y});maxY=Math.max(maxY,y+H);
    });
   });
-  const height=maxY+SECTION;sections.push({...spec,nodes,offset:yOffset,height,rounds});yOffset+=height;
+  const height=maxY+24;sections.push({...spec,nodes,offset:yOffset,height,rounds});yOffset+=height;
  }
- const width=Math.max(660,...sections.flatMap(sec=>sec.nodes.map(n=>n.x+W+26)),0);
- const height=Math.max(260,yOffset+12);const links=[];
- // Relier uniquement les vainqueurs lorsqu'une provenance est certaine ; jamais les perdants entrants.
- for(const sec of sections){if(sec.key!=='upper'&&sec.key!=='lower')continue;
-  for(const target of sec.nodes){for(const source of sec.nodes){if(source.m.id===target.m.id||source.x>=target.x||source.m.status!=='done')continue;
-   const win=Number(source.m.sa)>Number(source.m.sb)?source.m.a:source.m.b;
-   if(win!==target.m.a&&win!==target.m.b)continue;
-   const next=sec.nodes.filter(n=>n.x>source.x&&[n.m.a,n.m.b].includes(win)).sort((a,b)=>a.x-b.x)[0];
-   if(next?.m.id!==target.m.id)continue;
-   const x1=source.x+W,y1=sec.offset+source.y+H/2,x2=target.x,y2=sec.offset+target.y+H/2,mid=(x1+x2)/2;
-   links.push(`M${x1} ${y1} H${mid} V${y2} H${x2}`);
-  }}
+ const width=Math.max(680,...sections.flatMap(sec=>sec.nodes.map(n=>n.x+W+20)));
+ const height=Math.max(260,yOffset+12),links=[];
+ const positions=new Map(sections.flatMap(sec=>sec.nodes.map(n=>[n.m.id,{...n,y:n.y+sec.offset,key:sec.key}])));
+ for(const target of positions.values())for(const src of [target.m.sourceA,target.m.sourceB]){
+  if(!src?.id||src.outcome!=='winner')continue;
+  const origin=positions.get(src.id);if(!origin||origin.key!==target.key||origin.x>=target.x)continue;
+  const x1=origin.x+W,x2=target.x,y1=origin.y+H/2,y2=target.y+H/2,mid=(x1+x2)/2;
+  links.push(`M${x1} ${y1} H${mid} V${y2} H${x2}`);
  }
+ const labels=src=>{
+  if(!src)return 'À déterminer';if(src.team)return teams[src.team]?.name||'À déterminer';
+  const m=matches.find(x=>x.id===src.id);
+  return `${src.outcome==='winner'?'Vainqueur':'Perdant'} du match ${m?.number||'?'}`;
+ };
  const fit=()=>setZoom(Math.max(.2,Math.min(1,((viewport.current?.clientWidth||900)-25)/width)));
- return <div className="challongeWrap doubleUnified"><div className="challongeTools"><strong>Double élimination · rattrapage et classements</strong><div><button onClick={()=>setZoom(z=>Math.max(.2,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} role="region" tabIndex="0" aria-label="Tableau de double élimination, déplacement horizontal et vertical"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{links.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(sec=><React.Fragment key={sec.key}><div className="doubleUnifiedHeading" style={{top:sec.offset,left:0,width}}>{sec.title}</div>{sec.rounds.map((r,i)=><div className="challongeRoundTitle" key={r} style={{left:i*(W+G),top:sec.offset+30,width:W}}>{sec.key==='places'?'Classement':sec.key==='grand'?'Finale':`Tour ${i+1}`}</div>)}{sec.nodes.map(({m,x,y})=>{const win=m.status==='done'?(Number(m.sa)>Number(m.sb)?m.a:m.b):null;return <div className="challongeMatch" key={m.id} style={{left:x,top:sec.offset+y,width:W}}><div className="challongeMatchHead">{sec.key==='places'?`Places ${m.place}–${m.place+1}`:sec.key==='grand'?'Grande finale':`Match ${all.indexOf(m)+1}`}<span>{m.status==='playing'?`Terrain ${m.court+1}`:m.status==='done'?'Terminé':'À jouer'}</span></div>{[m.a,m.b].map((id,i)=><div key={i} className={'challongeParticipant '+(win===id?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||'À déterminer'}</span><b>{m.status==='done'?(i?m.sb:m.sa):'–'}</b></div>)}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau, déplaçable et zoomable. Les nouvelles rencontres apparaissent à mesure que les tours sont terminés.</p></div>
+ return <div className="challongeWrap doubleUnified"><div className="challongeTools"><strong>Double élimination · tableau complet préétabli</strong><div><button onClick={()=>setZoom(z=>Math.max(.2,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} role="region" tabIndex="0" aria-label="Tableau complet de double élimination"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{links.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(sec=><React.Fragment key={sec.key}><div className="doubleUnifiedHeading" style={{top:sec.offset,left:0,width}}>{sec.title}</div>{sec.rounds.map((r,i)=><div className="challongeRoundTitle" key={r} style={{left:i*(W+G),top:sec.offset+30,width:W}}>{sec.key==='places'?'Classement':sec.key==='grand'?'Finale':`Tour ${i+1}`}</div>)}{sec.nodes.map(({m,x,y})=>{const win=m.status==='done'?(Number(m.sa)>Number(m.sb)?m.a:m.b):null;return <div className={'challongeMatch '+(m.status==='skipped'?'doubleSkipped':'')} key={m.id} style={{left:x,top:sec.offset+y,width:W}}><div className="challongeMatchHead">{m.place?`Places ${m.place}–${m.place+1}`:m.conditionalReset?'Finale décisive (si nécessaire)':`Match ${m.number}`}<span>{m.status==='playing'?`Terrain ${m.court+1}`:m.status==='done'?'Terminé':m.status==='skipped'?'Non nécessaire':'À venir'}</span></div>{[0,1].map(i=>{const id=i?m.b:m.a;return <div key={i} className={'challongeParticipant '+(win===id&&win?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||labels(i?m.sourceB:m.sourceA)}</span><b>{m.status==='done'?(i?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Toutes les rencontres sont affichées dès le départ. Les noms remplacent automatiquement « Vainqueur / Perdant du match ».</p></div>;
 }
 function App(){const [s,setS]=useState(load),[name,setName]=useState(''),[tab,setTab]=useState('terrains'),[editing,setEditing]=useState({}),[message,setMessage]=useState('');useEffect(()=>localStorage.setItem('badminton-v1',JSON.stringify(s)),[s]);const cfg=settingsOf(s);const [timers,setTimers]=useState({});useEffect(()=>{if(cfg.mode!=='time')return;const interval=setInterval(()=>setTimers(old=>{let changed=false,next={...old};for(const id of s.courtIds){if(id&&next[id]?.running&&next[id].remaining>0){next[id]={...next[id],remaining:next[id].remaining-1};changed=true}}return changed?next:old}),1000);return()=>clearInterval(interval)},[s.courtIds.join(','),cfg.mode]);const clock=id=>{const t=timers[id],sec=t?.remaining??cfg.minutes*60;return <div className="courtTimer"><strong>{String(Math.floor(sec/60)).padStart(2,'0')}:{String(sec%60).padStart(2,'0')}</strong><button onClick={()=>setTimers(old=>({...old,[id]:{remaining:old[id]?.remaining??cfg.minutes*60,running:!old[id]?.running}}))}>{t?.running?'Pause':'Démarrer'}</button><button onClick={()=>setTimers(old=>({...old,[id]:{remaining:cfg.minutes*60,running:false}}))}>↺</button></div>};const teams=Object.fromEntries(s.teams.map(t=>[t.id,t]));const active=s.matches.filter(m=>m.phase===(s.phase==='final'?'final':'pool'));const waiting=active.filter(m=>m.status==='waiting'||m.status==='blocked');const done=active.filter(m=>m.status==='done');const poolGroups=Array.from({length:s.pools},(_,p)=>s.teams.filter(t=>s.poolAssignments?.[t.id]===p));const announce=x=>{setMessage(x);setTimeout(()=>setMessage(''),4500)};
 function schedule(state){let next={...state,matches:state.matches.map(m=>({...m})),courtIds:[...state.courtIds]};for(let c=0;c<next.courtIds.length;c++){if(next.courtIds[c])continue;let playing=new Set(next.matches.filter(m=>m.status==='playing').flatMap(m=>[m.a,m.b]));let m=next.matches.find(m=>m.status==='waiting'&&m.phase===(next.phase==='final'?'final':'pool')&&!playing.has(m.a)&&!playing.has(m.b));if(m){m.status='playing';m.court=c;next.courtIds[c]=m.id}}return next}
@@ -258,6 +321,7 @@ function launchTournament(){
   setS(schedule({...s,phase:'pool',pools:1,poolAssignments:Object.fromEntries(s.teams.map(t=>[t.id,0])),matches,courtIds:Array(cfg.courts).fill(null)}));setTab('terrains');return;
  }
  if(cfg.format==='double'){
+  if(!isPower(s.teams.length)){announce('Pour la double élimination, prévoir 2, 4, 8, 16 ou 32 équipes.');return;}
   let next={...s,phase:'final',matches:[],courtIds:Array(cfg.courts).fill(null),finalSize:s.teams.length,finalPositions:{},finalGroups:[],finalRounds:[]};doubleStart(next,s.teams.map(t=>t.id));setS(schedule(next));setTab('tableau');return;
  }
 }
@@ -286,10 +350,10 @@ const classificationPaths=useMemo(()=>{
 },[bracketPlan,s.finalGroups]);
 
 
-return <div className="app"><header><div className="brand"><div className="logo"><svg viewBox="0 0 56 56" width="42" height="42" aria-label="Logo volant badminton"><path d="M12 8 L44 8 L35 34 L21 34 Z" fill="none" stroke="#baff16" strokeWidth="3"/><path d="M20 8 L24 34 M28 8 V34 M36 8 L32 34" stroke="#9cc6e9" strokeWidth="2"/><rect x="19" y="35" width="18" height="9" rx="4" fill="#baff16"/><path d="M13 48 H43" stroke="#baff16" strokeWidth="3" strokeLinecap="round"/></svg></div><div><h1>BADMINTON <em>MANAGER</em></h1><p>Gestion de tournoi · {cfg.courts} terrains</p></div></div><div className="headerRight"><span className="pill">{s.phase==='setup'?'Configuration':s.phase==='pool'?'Phase de poules':'Classement intégral'}</span><button className="ghost" onClick={exportData}>↓ Sauvegarder</button><label className="upload">↑ Importer<input type="file" accept="application/json" onChange={e=>importData(e.target.files[0])}/></label></div></header><main><div className="heading"><div><h2>{s.title}</h2><p>{s.teams.length} équipes · {s.pools} poules · {done.length}/{active.length} matchs terminés</p></div><button className="danger" onClick={reset}>Nouveau tournoi</button></div><nav>{[['gestion','⚙ Gestion du tournoi'],['equipes','♟ Équipes'],['terrains','▦ Terrains'],['poules','◫ Poules'],['tableau','⌁ Tableau final'],['classement','🏆 Classement général']].map(([key,label])=><button key={key} className={tab===key?'selected':''} onClick={()=>setTab(key)}>{label}</button>)}</nav>{message&&<div className="notice">{message}</div>}
+return <div className="app"><header><div className="brand"><div className="logo"><img src={headerMark} alt="Logo Badminton Manager" /></div><div><h1>BADMINTON <em>MANAGER</em></h1><p>Gestion de tournoi · {cfg.courts} terrains</p></div></div><div className="headerRight"><span className="pill">{s.phase==='setup'?'Configuration':s.phase==='pool'?'Phase de poules':'Classement intégral'}</span><button className="ghost" onClick={exportData}>↓ Sauvegarder</button><label className="upload">↑ Importer<input type="file" accept="application/json" onChange={e=>importData(e.target.files[0])}/></label></div></header><main><div className="heading"><div><h2>{s.title}</h2><p>{s.teams.length} équipes · {s.pools} poules · {done.length}/{active.length} matchs terminés</p></div><button className="danger" onClick={reset}>Nouveau tournoi</button></div><nav>{[['gestion','⚙ Gestion du tournoi'],['equipes','♟ Équipes'],['terrains','▦ Terrains'],['poules','◫ Poules'],['tableau','⌁ Tableau final'],['classement','🏆 Classement général']].map(([key,label])=><button key={key} className={tab===key?'selected':''} onClick={()=>setTab(key)}>{label}</button>)}</nav>{message&&<div className="notice">{message}</div>}
 {tab==='gestion'&&<section className="panel managePanel"><h3>Gestion du tournoi</h3><p>Configure le tournoi avant son lancement. Les règles sont verrouillées dès que les rencontres commencent pour protéger les résultats.</p><div className="manageGrid"><label>Format du tournoi<select disabled={s.phase!=='setup'} value={cfg.format} onChange={e=>changeConfig('format',e.target.value)}><option value="integral">Poules + classement intégral</option><option value="pools">Poules uniquement</option><option value="league">Championnat — toutes les équipes</option><option value="double">Double élimination + classement</option></select></label><label>Nombre de terrains<input type="number" min="1" max="16" disabled={s.phase!=='setup'} value={cfg.courts} onChange={e=>changeConfig('courts',Math.min(16,Math.max(1,Number(e.target.value)||1)))}/></label><label>Mode de jeu<select disabled={s.phase!=='setup'} value={cfg.mode} onChange={e=>changeConfig('mode',e.target.value)}><option value="points">Aux points</option><option value="time">Au temps</option></select></label>{cfg.mode==='points'?<><label>Points à atteindre<input type="number" min="1" max="99" disabled={s.phase!=='setup'} value={cfg.points} onChange={e=>changeConfig('points',Math.min(99,Math.max(1,Number(e.target.value)||1)))}/></label><label>Fin du match<select disabled={s.phase!=='setup'} value={cfg.winByTwo?'two':'dry'} onChange={e=>changeConfig('winByTwo',e.target.value==='two')}><option value="dry">Points secs</option><option value="two">2 points d’écart avec plafond</option></select></label>{cfg.winByTwo&&<label>Plafond<input type="number" min={cfg.points} max="99" disabled={s.phase!=='setup'} value={Math.max(cfg.points,cfg.cap)} onChange={e=>changeConfig('cap',Math.max(cfg.points,Number(e.target.value)||cfg.points))}/></label>}</>:<label>Durée d'un match (minutes)<input type="number" min="1" max="120" disabled={s.phase!=='setup'} value={cfg.minutes} onChange={e=>changeConfig('minutes',Math.min(120,Math.max(1,Number(e.target.value)||1)))}/></label>}{['integral','pools'].includes(cfg.format)&&<label>Nombre de poules<input type="number" min="1" max={Math.max(1,Math.floor(s.teams.length/2))} disabled={s.phase!=='setup'} value={s.pools} onChange={e=>setS(x=>({...x,pools:Math.max(1,Number(e.target.value)||1)}))}/></label>}</div><p className="muted">{cfg.format==='double'?'Une première défaite envoie dans le tableau des perdants. Une deuxième élimine ; des rencontres supplémentaires départagent les places restantes.':'Les matchs seront automatiquement distribués sur les terrains disponibles.'}</p><button disabled={s.phase!=='setup'} onClick={launchTournament}>▶ Lancer le tournoi</button></section>}
 {tab==='equipes'&&<section className="panel"><h3>Inscription des équipes</h3><p>Chaque équipe possède sa propre couleur. Ajoute-les avant de lancer les poules.</p><div className="add"><input disabled={s.phase!=='setup'} value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTeam()} placeholder="Nom de l'équipe"/><button disabled={s.phase!=='setup'} onClick={addTeam}>+ Ajouter</button></div><div className="teamgrid">{s.teams.map(t=><div className="team" key={t.id}><i style={{background:t.color}}/><span>{t.name}</span>{s.phase==='setup'&&<button className="x" onClick={()=>setS(x=>({...x,teams:x.teams.filter(a=>a.id!==t.id)}))}>×</button>}</div>)}</div><p className="muted">Astuce : tu peux aussi importer un tournoi sauvegardé en JSON.</p></section>}
-{tab==='terrains'&&<><div className="scoreHero"><div><small>BADMINTON · {s.phase==='final'?'PHASE FINALE':s.phase==='pool'?'PHASE DE POULES':'PRÉPARATION'}</small><strong>{done.length} <span>/ {active.length} matchs terminés</span></strong></div><div className="heroPoints">{cfg.mode==='time'?cfg.minutes:cfg.points} <span>{cfg.mode==='time'?'MIN':'PTS'}</span></div><div className="heroRule">{cfg.mode==='time'?'Score à la fin du temps':cfg.winByTwo?'2 points d’écart':'Points secs'}<br/>{cfg.mode==='time'?`${cfg.minutes} minutes`:cfg.winByTwo?`Plafond ${Math.max(cfg.cap,cfg.points)}`:`${cfg.points} points`}</div></div><div className="matchDashboard"><div className="courtgrid">{s.courtIds.map((id,i)=>{let m=s.matches.find(x=>x.id===id);let e=m?(editing[m.id]||{sa:m.sa||'0',sb:m.sb||'0'}):null;let adjust=(side,delta)=>{if(!m)return;setEditing(old=>{let current=old[m.id]||{sa:m.sa||'0',sb:m.sb||'0'};return {...old,[m.id]:{...current,[side]:String(Math.max(0,Math.min(cfg.mode==='points'?Math.max(cfg.points,cfg.cap):999,(Number(current[side])||0)+delta)))}}})};return <article className="court" key={i}><div className="courtHead"><strong>🏸 TERRAIN {i+1}</strong><span className={'status '+(m?'live':'')}>{m?'EN COURS':'LIBRE'}</span></div><div className="pitch"><svg className="badmintonLines" viewBox="0 0 600 260" preserveAspectRatio="none" aria-label="Tracé réglementaire d’un terrain de badminton, lignes de simple et de double"><rect x="18" y="16" width="564" height="228"/><path d="M18 36H582 M18 224H582"/><path d="M75 16V244 M525 16V244"/><path d="M238 16V244 M362 16V244"/><path d="M75 130H238 M362 130H525"/><path className="net" d="M300 9V251"/></svg>{m?<><div className="courtTeam left" style={{borderBottomColor:teams[m.a]?.color}}>{teams[m.a]?.name}</div><div className="courtTeam right" style={{borderBottomColor:teams[m.b]?.color}}>{teams[m.b]?.name}</div><div className="courtScore left">{String(e.sa).padStart(2,'0')}</div><div className="courtScore right">{String(e.sb).padStart(2,'0')}</div><div className="vsBall">VS</div>{cfg.mode==='time'&&clock(m.id)}<div className="courtControls left"><button aria-label="Retirer un point équipe gauche" onClick={()=>adjust('sa',-1)}>−</button><button className="plus" onClick={()=>adjust('sa',1)}>+1</button></div><div className="courtControls right"><button aria-label="Retirer un point équipe droite" onClick={()=>adjust('sb',-1)}>−</button><button className="plus" onClick={()=>adjust('sb',1)}>+1</button></div><div className="courtBottom"><span>{cfg.mode==='time'?`${cfg.minutes} min`:`${cfg.points} points`}</span><button onClick={()=>saveMatch(m.id)}>✓ Terminer le match</button></div></>:<div className="courtEmpty">En attente d’une rencontre</div>}</div></article>})}</div><aside className="queuePanel"><div className="queueTitle"><small>PROCHAINES RENCONTRES</small><h3>Matchs en attente <span>{waiting.length}</span></h3><p>Un match disponible arrive automatiquement sur le terrain libéré.</p></div>{s.phase==='setup'?<div className="empty">Configure les poules pour commencer.</div>:waiting.length===0?<div className="empty">Aucun match en attente.</div>:<div className="queue">{waiting.map((m,i)=>{const occupied=new Set(s.matches.filter(x=>x.status==='playing').flatMap(x=>[x.a,x.b]));const ready=Boolean(m.a&&m.b&&!occupied.has(m.a)&&!occupied.has(m.b));return <div className={`queueItem ${ready?'queueReady':'queueWaiting'}`} key={m.id}><div className="queueMeta"><small>{m.phase==='pool'?`Poule ${String.fromCharCode(65+m.pool)}`:`Tour ${m.round+1}`} · Match {i+1}</small><strong>{ready?'Joueurs prêts':'En attente des joueurs'}</strong></div><div className="queueTeams"><span style={{borderLeftColor:teams[m.a]?.color||'#9ba7b6'}}>{teams[m.a]?.name||'À déterminer'}</span><b>VS</b><span style={{borderLeftColor:teams[m.b]?.color||'#9ba7b6'}}>{teams[m.b]?.name||'À déterminer'}</span></div><em>{ready?'En attente d’un terrain':'Joueurs indisponibles pour le moment'}</em></div>})}</div>}</aside></div></>}
+{tab==='terrains'&&<><div className="scoreHero"><div><small>BADMINTON · {s.phase==='final'?'PHASE FINALE':s.phase==='pool'?'PHASE DE POULES':'PRÉPARATION'}</small><strong>{done.length} <span>/ {active.length} matchs terminés</span></strong></div><div className="heroPoints">{cfg.mode==='time'?cfg.minutes:cfg.points} <span>{cfg.mode==='time'?'MIN':'PTS'}</span></div><div className="heroRule">{cfg.mode==='time'?'Score à la fin du temps':cfg.winByTwo?'2 points d’écart':'Points secs'}<br/>{cfg.mode==='time'?`${cfg.minutes} minutes`:cfg.winByTwo?`Plafond ${Math.max(cfg.cap,cfg.points)}`:`${cfg.points} points`}</div></div><div className="matchDashboard"><div className="courtgrid">{s.courtIds.map((id,i)=>{let m=s.matches.find(x=>x.id===id);let e=m?(editing[m.id]||{sa:m.sa||'0',sb:m.sb||'0'}):null;let adjust=(side,delta)=>{if(!m)return;setEditing(old=>{let current=old[m.id]||{sa:m.sa||'0',sb:m.sb||'0'};return {...old,[m.id]:{...current,[side]:String(Math.max(0,Math.min(cfg.mode==='points'?Math.max(cfg.points,cfg.cap):999,(Number(current[side])||0)+delta)))}}})};return <article className="court" key={i}><div className="courtHead"><strong>🏸 TERRAIN {i+1}</strong><span className={'status '+(m?'live':'')}>{m?'EN COURS':'LIBRE'}</span></div><div className="pitch"><svg className="badmintonLines" viewBox="0 0 600 260" preserveAspectRatio="none" aria-label="Tracé réglementaire d’un terrain de badminton, lignes de simple et de double"><rect x="18" y="16" width="564" height="228"/><path d="M18 36H582 M18 224H582"/><path d="M75 16V244 M525 16V244"/><path d="M238 16V244 M362 16V244"/><path d="M75 130H238 M362 130H525"/><path className="net" d="M300 9V251"/></svg>{m?<><div className="courtTeam left" style={{borderBottomColor:teams[m.a]?.color}}>{teams[m.a]?.name}</div><div className="courtTeam right" style={{borderBottomColor:teams[m.b]?.color}}>{teams[m.b]?.name}</div><div className="courtScore left">{String(e.sa).padStart(2,'0')}</div><div className="courtScore right">{String(e.sb).padStart(2,'0')}</div><div className="vsBall">VS</div>{cfg.mode==='time'&&clock(m.id)}<div className="courtControls left"><button aria-label="Retirer un point équipe gauche" onClick={()=>adjust('sa',-1)}>−</button><button className="plus" onClick={()=>adjust('sa',1)}>+1</button></div><div className="courtControls right"><button aria-label="Retirer un point équipe droite" onClick={()=>adjust('sb',-1)}>−</button><button className="plus" onClick={()=>adjust('sb',1)}>+1</button></div><div className="courtBottom"><span>{cfg.mode==='time'?`${cfg.minutes} min`:`${cfg.points} points`}</span><button onClick={()=>saveMatch(m.id)}>✓ Terminer le match</button></div></>:<div className="courtEmpty">En attente d’une rencontre</div>}</div></article>})}</div><aside className="queuePanel"><div className="queueTitle"><small>PROCHAINES RENCONTRES</small><h3>Matchs en attente <span>{waiting.length}</span></h3><p>Un match disponible arrive automatiquement sur le terrain libéré.</p></div>{s.phase==='setup'?<div className="empty">Configure les poules pour commencer.</div>:waiting.length===0?<div className="empty">Aucun match en attente.</div>:<div className="queue">{waiting.map((m,i)=>{const occupied=new Set(s.matches.filter(x=>x.status==='playing').flatMap(x=>[x.a,x.b]));const ready=Boolean(m.a&&m.b&&!occupied.has(m.a)&&!occupied.has(m.b));return <div className={`queueItem ${ready?'queueReady':'queueWaiting'}`} key={m.id}><div className="queueMeta"><small>{m.phase==='pool'?`Poule ${String.fromCharCode(65+m.pool)}`:`Tour ${m.round+1}`} · Match {m.number||i+1}</small><strong>{ready?'Joueurs prêts':'En attente des joueurs'}</strong></div><div className="queueTeams"><span style={{borderLeftColor:teams[m.a]?.color||'#9ba7b6'}}>{teams[m.a]?.name||'À déterminer'}</span><b>VS</b><span style={{borderLeftColor:teams[m.b]?.color||'#9ba7b6'}}>{teams[m.b]?.name||'À déterminer'}</span></div><em>{ready?'En attente d’un terrain':'Joueurs indisponibles pour le moment'}</em></div>})}</div>}</aside></div></>}
 {tab==='poules'&&<><section className="panel"><div className="sectionHead"><h3>Phase de poules</h3>{s.phase==='setup'&&['integral','pools'].includes(cfg.format)&&<button onClick={startPools}>▶ Générer et lancer les poules</button>}</div>{s.phase==='setup'&&<div className="settings"><label>Nombre de poules <input type="number" min="1" max={Math.max(1,Math.floor(s.teams.length/2))} value={s.pools} onChange={e=>setS(x=>({...x,pools:Math.max(1,Number(e.target.value)||1)}))}/></label><p>Répartition automatique modifiable avant le lancement. Chaque équipe rencontre les autres équipes de sa poule.</p></div>}{s.phase==='setup'&&['integral','pools'].includes(cfg.format)&&<div className="poolDraft"><div className="poolDraftHeader"><div><h4>Composition des poules</h4><p>Répartition automatique initiale. Déplace librement chaque équipe dans la poule de ton choix, puis lance les matchs.</p></div><button type="button" onClick={shufflePools}>↻ Nouveau tirage automatique</button></div><div className="poolDraftGrid">{Array.from({length:s.pools},(_,p)=>{const members=s.teams.filter((t,i)=>(Number.isInteger(s.poolDraft?.[t.id])&&s.poolDraft[t.id]<s.pools?s.poolDraft[t.id]:i%s.pools)===p);return <div className="poolDraftCard" key={p}><h4>Poule {String.fromCharCode(65+p)} <small>{members.length} équipes</small></h4>{members.map(t=><div className="poolDraftTeam" key={t.id}><i style={{background:t.color}}/><span>{t.name}</span><select aria-label={'Poule de '+t.name} value={p} onChange={e=>assignPool(t.id,Number(e.target.value))}>{Array.from({length:s.pools},(_,k)=><option value={k} key={k}>Poule {String.fromCharCode(65+k)}</option>)}</select></div>)}{members.length===0&&<p className="muted">Aucune équipe</p>}</div>})}</div><p className="muted">Chaque poule doit contenir au moins deux équipes pour démarrer. La composition est enregistrée avec le tournoi.</p></div>}{s.phase!=='setup'&&<div className="poolgrid">{poolGroups.map((group,p)=><div className="pool" key={p}><h4>POULE {String.fromCharCode(65+p)}</h4><table><thead><tr><th>Équipe</th><th>J</th><th>V</th><th>Diff.</th></tr></thead><tbody>{ranks(group,s.matches.filter(m=>m.phase==='pool')).map(t=><tr key={t.id}><td><i style={{background:t.color}}/>{t.name}</td><td>{t.played}</td><td>{t.w}</td><td>{t.pf-t.pa}</td></tr>)}</tbody></table></div>)}</div>}{s.phase==='pool'&&cfg.format==='integral'&&<div className="actions"><button onClick={beginFinal}>Créer le tableau final →</button><span>Tous les matchs des poules doivent être terminés.</span></div>}</section></>}
 {tab==='tableau'&&<section className="panel"><div className="sectionHead"><h3>Tableau de classement intégral</h3>{s.phase==='pool'&&cfg.format==='integral'&&<button onClick={beginFinal}>Créer le tableau final →</button>}</div>{s.phase!=='final'?<div className="empty">Le tableau apparaît après le lancement d'une phase finale.</div>:<><p>Les gagnants et les perdants poursuivent chacun dans leur branche de classement. Les rencontres prêtes à jouer sont automatiquement envoyées sur les terrains.</p><div className="bracketLegend"><span>● Victoire → places supérieures</span><span>● Défaite → tableau de classement inférieur</span></div><div className="bracketSections">{s.double?<DoubleBracket matches={s.matches.filter(m=>m.phase==='final')} teams={teams}/>:<UnifiedBracket stages={bracketPlan} teams={teams} classificationPaths={classificationPaths}/>}</div><p className="bracketHint">← Faites glisser horizontalement pour consulter les tours suivants →</p><div className="finalCourtAction"><strong>🏸 Les matchs du tableau final se jouent sur les quatre terrains.</strong><button onClick={()=>setTab('terrains')}>Voir les terrains et saisir les scores →</button></div></>}</section>}
 {tab==='classement'&&<section className="panel"><div className="sectionHead"><h3>🏆 Classement général</h3></div>{s.phase!=='final'&&cfg.format!=='league'&&cfg.format!=='pools'?<div className="empty">Le classement général sera disponible dès le lancement de la phase finale.</div>:<><div className="finalRankingHead"><h3>Classement général — 1 à {s.finalSize}</h3><span>{finalStandings.filter(x=>x.status==='done').length}/{s.finalSize} places attribuées</span></div><p className="muted">Chaque place est déterminée par un match de classement. Les places encore indécises sont indiquées ci-dessous.</p><div className="finalRanking">{(s.phase==='final'?finalStandings:ranks(s.teams,s.matches).map((team,i)=>({place:i+1,team,status:'done'}))).map(item=><div className={'finalRankRow '+(item.status==='done'?'rankKnown':'rankPending')} key={item.place}><strong className="rankNumber">{item.place}{item.place===1?' 🏆':''}</strong><i className="rankColor" style={{background:item.team?.color||'#aeb9c8'}}/><span>{item.team?.name||'À déterminer'}</span>{item.status==='done'&&<b>Classé</b>}</div>)}</div>{finalFinished&&<div className="finalComplete">🏆 Tournoi terminé : toutes les équipes sont classées !</div>}</>}</section>}
