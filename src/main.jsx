@@ -93,18 +93,25 @@ function FullBracket({stages,teams}){
   const coords=new Map(),sections=[];let yCursor=TOP;
   for(let c=0;c<components.length;c++){
    const comp=components[c],set=new Set(comp.map(e=>e.number));
-   const sinks=comp.filter(e=>!next.get(e.number).some(n=>set.has(n))).sort((a,b)=>a.col-b.col||a.number-b.number);
+   // Parcours depuis la finale vers les premiers tours : deux matchs alimentant
+   // une même rencontre restent voisins, comme dans un arbre Challonge.
+   const sinks=comp.filter(e=>!next.get(e.number).some(n=>set.has(n))).sort((a,b)=>b.col-a.col||a.number-b.number);
    const roots=[],seen=new Set();
-   const visit=n=>{if(seen.has(n))return;seen.add(n);for(const src of sources.get(n))if(set.has(src.number))visit(src.number);if(!sources.get(n).some(src=>set.has(src.number)))roots.push(n)};
+   const visit=n=>{if(seen.has(n))return;seen.add(n);
+    const parents=sources.get(n).filter(src=>set.has(src.number)).sort((a,b)=>a.index-b.index);
+    parents.forEach(src=>visit(src.number));
+    if(!parents.length)roots.push(n);
+   };
    sinks.forEach(e=>visit(e.number));comp.forEach(e=>visit(e.number));
    const sectionTop=yCursor;
    roots.forEach((n,i)=>{const e=byNumber.get(n);coords.set(n,{x:e.col*(CW+GAP),y:sectionTop+32+i*ROW})});
-   // Un match suivant est placé au milieu des deux rencontres qui le nourrissent.
-   const sorted=[...comp].sort((a,b)=>a.col-b.col||a.number-b.number);
-   for(const e of sorted){if(coords.has(e.number))continue;const parents=sources.get(e.number).map(src=>coords.get(src.number)).filter(Boolean);
+   // Chaque match est centré exactement entre ses deux matchs sources.
+   const place=n=>{if(coords.has(n))return coords.get(n);
+    const e=byNumber.get(n),parents=sources.get(n).filter(src=>set.has(src.number)).map(src=>place(src.number));
     const center=parents.length?parents.reduce((sum,p)=>sum+p.y+CARD/2,0)/parents.length:sectionTop+32+roots.length*ROW;
-    coords.set(e.number,{x:e.col*(CW+GAP),y:center-CARD/2});
-   }
+    const pos={x:e.col*(CW+GAP),y:center-CARD/2};coords.set(n,pos);return pos;
+   };
+   comp.forEach(e=>place(e.number));
    // Les composantes ne se chevauchent pas et restent visibles dans une seule vue.
    const bottom=Math.max(...comp.map(e=>coords.get(e.number).y+CARD));
    sections.push({title:isMain(comp)?'TABLEAU PRINCIPAL':`TABLEAU DE CLASSEMENT ${c}`,top:sectionTop-24,bottom:bottom+22});
