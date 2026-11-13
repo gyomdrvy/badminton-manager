@@ -102,3 +102,16 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .fullBracketPlayer b{font-size:13px}
 .fullBracketWinner{background:#e4ffc5}
 @media(max-width:700px){.fullBracketScroll{height:68vh;min-height:350px}}
+
+/* Vue globale type Roland-Garros : tableaux empilés, vainqueurs reliés uniquement */
+.fullBracketScroll{height:min(82vh,940px);min-height:520px;background:#d9edff}
+.fullBracketCanvas{background:linear-gradient(145deg,#c9e5fa,#eaf6ff)}
+.fullBracketLines path{stroke:#fff;stroke-width:3.5;filter:drop-shadow(0 1px 1px #477a9d)}
+.fullBracketGroupTitle{left:8px;right:auto;background:#174a75;color:#fff;padding:5px 12px;border-radius:5px;z-index:3}
+.fullBracketDivider{position:absolute;left:0;right:0;border-top:2px solid #9cc7e8;z-index:0}
+.fullBracketMatch{z-index:2}
+@media(max-width:700px){.fullBracketScroll{height:72vh;min-height:480px}}
+
+.fullBracketHelp{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.bracketZoom{display:flex;gap:5px;align-items:center}
+.bracketZoom button{padding:6px 10px;border-radius:6px;background:#174a75;color:#fff;font-size:12px}

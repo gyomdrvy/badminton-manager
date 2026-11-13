@@ -73,51 +73,63 @@ function plannedBracket(state, teamsById){
 // Une seule grande surface défilante : tableau principal en haut, classements en dessous.
 // Les coordonnées sont calculées à partir des matchs sources pour garder des raccords simples.
 function FullBracket({stages,teams}){
- const scroll=useRef(null),drag=useRef(null);
+ const scroll=useRef(null),drag=useRef(null),[zoom,setZoom]=useState(1);
  const layout=useMemo(()=>{
-  const CW=290, GAP=86, CARD=90, HEADER=57, ROW=116, SECTION_GAP=105;
+  const CW=270,GAP=74,CARD=90,ROW=112,TOP=78,SECTION_GAP=92;
   const entries=stages.flatMap((stage,col)=>stage.matches.map(entry=>({...entry,col})));
   const byNumber=new Map(entries.map(e=>[e.number,e]));
-  const sourceNums=e=>e.slots.map(s=>Number((s.label||'').match(/(?:Vainqueur|Perdant) du match (\d+)/i)?.[1])).filter(n=>byNumber.has(n));
-  const main=entries.filter(e=>e.track==='Tableau principal'||e.track==='Préliminaires');
-  const rest=entries.filter(e=>!main.includes(e));
-  const coords=new Map();
-  const placeLane=(items,base)=>{
-   const ordered=[...items].sort((a,b)=>a.col-b.col||a.number-b.number);
-   const groups=new Map();ordered.forEach(e=>{if(!groups.has(e.col))groups.set(e.col,[]);groups.get(e.col).push(e)});
-   const firstCol=Math.min(...items.map(e=>e.col));
-   const initial=groups.get(firstCol)||[];
-   initial.forEach((e,i)=>coords.set(e.number,{x:e.col*(CW+GAP),y:base+i*ROW}));
-   for(const col of [...groups.keys()].sort((a,b)=>a-b)){
-    if(col===firstCol)continue;
-    const list=groups.get(col);let previous=base-ROW;
-    for(const e of list){const sources=sourceNums(e).filter(n=>coords.has(n));let y=sources.length? sources.reduce((v,n)=>v+coords.get(n).y,0)/sources.length:previous+ROW;
-     y=Math.max(y,previous+CARD+12);coords.set(e.number,{x:e.col*(CW+GAP),y});previous=y;
-    }
+  const winnerSources=e=>e.slots.map((slot,index)=>({index,label:slot.label||''})).filter(s=>/^Vainqueur du match \d+$/i.test(s.label)).map(s=>({index,number:Number(s.label.match(/\d+/)[0])})).filter(s=>byNumber.has(s.number));
+  const sources=new Map(entries.map(e=>[e.number,winnerSources(e)]));
+  const next=new Map(entries.map(e=>[e.number,[]]));
+  entries.forEach(e=>sources.get(e.number).forEach(src=>next.get(src.number).push(e.number)));
+  // Chaque composante relie uniquement les gagnants. Un perdant commence un NOUVEAU tableau.
+  const components=[],visited=new Set();
+  for(const entry of entries){if(visited.has(entry.number))continue;const stack=[entry.number],members=[];visited.add(entry.number);
+   while(stack.length){const n=stack.pop();members.push(byNumber.get(n));const neighbors=[...sources.get(n).map(s=>s.number),...next.get(n)];for(const x of neighbors)if(!visited.has(x)){visited.add(x);stack.push(x)}}
+   components.push(members);
+  }
+  const isMain=comp=>comp.some(e=>e.track==='Tableau principal'||e.track==='Préliminaires');
+  components.sort((a,b)=>Number(isMain(b))-Number(isMain(a))||Math.min(...a.map(e=>e.number))-Math.min(...b.map(e=>e.number)));
+  const coords=new Map(),sections=[];let yCursor=TOP;
+  for(let c=0;c<components.length;c++){
+   const comp=components[c],set=new Set(comp.map(e=>e.number));
+   const sinks=comp.filter(e=>!next.get(e.number).some(n=>set.has(n))).sort((a,b)=>a.col-b.col||a.number-b.number);
+   const roots=[],seen=new Set();
+   const visit=n=>{if(seen.has(n))return;seen.add(n);for(const src of sources.get(n))if(set.has(src.number))visit(src.number);if(!sources.get(n).some(src=>set.has(src.number)))roots.push(n)};
+   sinks.forEach(e=>visit(e.number));comp.forEach(e=>visit(e.number));
+   const sectionTop=yCursor;
+   roots.forEach((n,i)=>{const e=byNumber.get(n);coords.set(n,{x:e.col*(CW+GAP),y:sectionTop+32+i*ROW})});
+   // Un match suivant est placé au milieu des deux rencontres qui le nourrissent.
+   const sorted=[...comp].sort((a,b)=>a.col-b.col||a.number-b.number);
+   for(const e of sorted){if(coords.has(e.number))continue;const parents=sources.get(e.number).map(src=>coords.get(src.number)).filter(Boolean);
+    const center=parents.length?parents.reduce((sum,p)=>sum+p.y+CARD/2,0)/parents.length:sectionTop+32+roots.length*ROW;
+    coords.set(e.number,{x:e.col*(CW+GAP),y:center-CARD/2});
    }
-   return Math.max(base+initial.length*ROW,...items.map(e=>(coords.get(e.number)?.y||base)+CARD));
-  };
-  let mainBottom=main.length?placeLane(main,HEADER+18):HEADER+18;
-  // Les tableaux de classement partagent la même surface, en dessous du tableau principal.
-  const tracks=[...new Set(rest.map(e=>e.track))];let bottom=mainBottom+SECTION_GAP;
-  const laneTitles=[];
-  for(const track of tracks){const list=rest.filter(e=>e.track===track);const top=bottom;bottom=placeLane(list,top+34)+42;laneTitles.push({title:track,y:top});}
-  const width=Math.max(1000,stages.length*(CW+GAP)+40),height=Math.max(380,bottom+30);
+   // Les composantes ne se chevauchent pas et restent visibles dans une seule vue.
+   const bottom=Math.max(...comp.map(e=>coords.get(e.number).y+CARD));
+   sections.push({title:isMain(comp)?'TABLEAU PRINCIPAL':`TABLEAU DE CLASSEMENT ${c}`,top:sectionTop-24,bottom:bottom+22});
+   yCursor=bottom+SECTION_GAP;
+  }
   const wires=[];
-  for(const e of entries){const target=coords.get(e.number);if(!target)continue;for(const n of sourceNums(e)){
-   const src=coords.get(n);if(!src||src.x>=target.x)continue;
-   const sx=src.x+CW,sy=src.y+CARD/2,tx=target.x,ty=target.y+CARD/2,mx=sx+(tx-sx)/2;
-   wires.push({key:`${n}-${e.number}`,d:`M ${sx} ${sy} H ${mx} V ${ty} H ${tx}`});
-  }}
-  return{entries,coords,wires,width,height,CW,CARD,HEADER,laneTitles};
+  for(const e of entries){const target=coords.get(e.number);if(!target)continue;
+   const parents=sources.get(e.number).map(s=>({slot:s.index,number:s.number,pos:coords.get(s.number)})).filter(x=>x.pos&&x.pos.x<target.x);
+   if(!parents.length)continue;
+   const joinX=target.x-GAP/2;
+   for(const parent of parents){const sx=parent.pos.x+CW,sy=parent.pos.y+CARD/2;
+    wires.push({key:`${parent.number}-${e.number}`,d:`M ${sx} ${sy} H ${joinX}`});
+   }
+   if(parents.length===2){const ys=parents.map(p=>p.pos.y+CARD/2);wires.push({key:`join-${e.number}`,d:`M ${joinX} ${Math.min(...ys)} V ${Math.max(...ys)} M ${joinX} ${(ys[0]+ys[1])/2} H ${target.x}`});}
+   else{const sy=parents[0].pos.y+CARD/2,ty=target.y+CARD/2;wires.push({key:`join-${e.number}`,d:`M ${joinX} ${sy} V ${ty} H ${target.x}`});}
+  }
+  const width=Math.max(900,stages.length*(CW+GAP)+30),height=Math.max(420,yCursor);
+  return{entries,coords,sections,wires,width,height,CW,CARD,GAP};
  },[stages]);
  const onPointerDown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;drag.current={x:e.clientX,y:e.clientY,left:scroll.current.scrollLeft,top:scroll.current.scrollTop};};
  const onPointerMove=e=>{if(!drag.current||!scroll.current)return;scroll.current.scrollLeft=drag.current.left-(e.clientX-drag.current.x);scroll.current.scrollTop=drag.current.top-(e.clientY-drag.current.y);};
- return <div className="fullBracketWrap"><div className="fullBracketHelp">↔ Faites glisser le tableau pour voir tous les tours et les matchs de classement</div><div className="fullBracketScroll" ref={scroll} tabIndex="0" role="region" aria-label="Tableau final complet, défilement horizontal et vertical" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={()=>drag.current=null} onPointerCancel={()=>drag.current=null} onPointerLeave={()=>drag.current=null}><div className="fullBracketCanvas" style={{width:layout.width,height:layout.height}}>
+ return <div className="fullBracketWrap"><div className="fullBracketHelp"><span>Vue générale · glisser pour parcourir · liaisons des vainqueurs uniquement</span><div className="bracketZoom"><button onClick={()=>setZoom(z=>Math.max(.35,Math.round((z-.15)*100)/100))}>−</button><button onClick={()=>{setZoom(Math.max(.35,Math.min(1,(scroll.current?.clientWidth||1000)/layout.width)));if(scroll.current){scroll.current.scrollLeft=0;scroll.current.scrollTop=0}}}>Vue complète</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={()=>setZoom(z=>Math.min(1.5,Math.round((z+.15)*100)/100))}>+</button></div></div><div className="fullBracketScroll" ref={scroll} tabIndex="0" role="region" aria-label="Tableau de tournoi complet défilant" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={()=>drag.current=null} onPointerCancel={()=>drag.current=null} onPointerLeave={()=>drag.current=null}><div className="fullBracketCanvas" style={{width:layout.width,height:layout.height,zoom}}>
  <svg className="fullBracketLines" width={layout.width} height={layout.height} aria-hidden="true">{layout.wires.map(w=><path key={w.key} d={w.d}/>)}</svg>
- {stages.map((stage,i)=><div className="fullBracketHeader" key={i} style={{left:i*(layout.CW+86),width:layout.CW}}>{stage.title}</div>)}
- <div className="fullBracketGroupTitle" style={{top:layout.HEADER}}>TABLEAU PRINCIPAL</div>
- {layout.laneTitles.map((t,i)=><div className="fullBracketGroupTitle secondary" key={i} style={{top:t.y}}>{t.title}</div>)}
+ {stages.map((stage,i)=><div className="fullBracketHeader" key={i} style={{left:i*(layout.CW+layout.GAP),width:layout.CW}}>{stage.title}</div>)}
+ {layout.sections.map((section,i)=><React.Fragment key={i}><div className="fullBracketGroupTitle" style={{top:section.top}}>{section.title}</div>{i>0&&<div className="fullBracketDivider" style={{top:section.top-22}}/>}</React.Fragment>)}
  {layout.entries.map(entry=>{const pos=layout.coords.get(entry.number);if(!pos)return null;const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div className="fullBracketMatch" key={entry.number} style={{left:pos.x,top:pos.y,width:layout.CW,height:layout.CARD}}><div className="fullBracketMeta"><b>Match {entry.number}</b><span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j===0?'a':'b']||slot.id;const label=teams[id]?.name||slot.label||'À déterminer';return <div className={'fullBracketPlayer '+(winner&&winner===id?'fullBracketWinner':'')} key={j}><i style={{background:teams[id]?.color||'#9bb5ca'}}/><span title={label}>{label}</span><b>{m?.status==='done'?(j===0?m.sa:m.sb):'–'}</b></div>})}</div>})}
  </div></div></div>;
 }
