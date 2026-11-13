@@ -194,7 +194,42 @@ function doubleAdvance(state){
  // Si le tableau inférieur est vide, les défaites du prochain tour l'alimenteront.
  return state;
 }
-function DoubleBracket({matches,teams}){const groups=[...new Set(matches.map(m=>m.track||'Tableau principal'))];return <div className="doubleBoard">{groups.map(group=><div className="doubleTrack" key={group}><h4>{group}</h4><div className="doubleMatches">{matches.filter(m=>(m.track||'Tableau principal')===group).map((m,i)=><div className="doubleCard" key={m.id}><small>Match {i+1} · {m.status==='done'?'Terminé':m.status==='playing'?'En cours':'À jouer'}</small><div>{teams[m.a]?.name||'À déterminer'} <b>{m.status==='done'?m.sa:''}</b></div><div>{teams[m.b]?.name||'À déterminer'} <b>{m.status==='done'?m.sb:''}</b></div></div>)}</div></div>)}</div>}
+function DoubleBracket({matches,teams}){
+ const viewport=useRef(null),[zoom,setZoom]=useState(1);
+ const W=226,H=90,G=52,ROW=112,TOP=60,SECTION=28;
+ const ordered=[{key:'upper',title:'Tableau principal — vainqueurs',test:m=>m.doubleStage==='upperMatches'},
+ {key:'lower',title:'Tableau des perdants — rattrapage',test:m=>m.doubleStage==='lowerMatches'},
+ {key:'grand',title:'Grande finale',test:m=>['grandFinal','reset'].includes(m.doubleStage)},
+ {key:'places',title:'Matchs de classement',test:m=>m.doubleStage==='placementMatches'}];
+ let yOffset=0;const sections=[];const all=matches.filter(m=>m.phase==='final');
+ for(const spec of ordered){
+  const ms=all.filter(spec.test);if(!ms.length)continue;
+  const rounds=[...new Set(ms.map(m=>m.round))].sort((a,b)=>a-b);
+  const nodes=[];let maxY=TOP;
+  rounds.forEach((r,col)=>{const roundMatches=ms.filter(m=>m.round===r);
+   roundMatches.forEach((m,i)=>{const spacing=spec.key==='upper'?ROW*2**col:ROW;
+    const y=TOP+i*spacing+(spec.key==='upper'&&col>0?(spacing-ROW)/2:0);
+    nodes.push({m,x:col*(W+G),y});maxY=Math.max(maxY,y+H);
+   });
+  });
+  const height=maxY+SECTION;sections.push({...spec,nodes,offset:yOffset,height,rounds});yOffset+=height;
+ }
+ const width=Math.max(660,...sections.flatMap(sec=>sec.nodes.map(n=>n.x+W+26)),0);
+ const height=Math.max(260,yOffset+12);const links=[];
+ // Relier uniquement les vainqueurs lorsqu'une provenance est certaine ; jamais les perdants entrants.
+ for(const sec of sections){if(sec.key!=='upper'&&sec.key!=='lower')continue;
+  for(const target of sec.nodes){for(const source of sec.nodes){if(source.m.id===target.m.id||source.x>=target.x||source.m.status!=='done')continue;
+   const win=Number(source.m.sa)>Number(source.m.sb)?source.m.a:source.m.b;
+   if(win!==target.m.a&&win!==target.m.b)continue;
+   const next=sec.nodes.filter(n=>n.x>source.x&&[n.m.a,n.m.b].includes(win)).sort((a,b)=>a.x-b.x)[0];
+   if(next?.m.id!==target.m.id)continue;
+   const x1=source.x+W,y1=sec.offset+source.y+H/2,x2=target.x,y2=sec.offset+target.y+H/2,mid=(x1+x2)/2;
+   links.push(`M${x1} ${y1} H${mid} V${y2} H${x2}`);
+  }}
+ }
+ const fit=()=>setZoom(Math.max(.2,Math.min(1,((viewport.current?.clientWidth||900)-25)/width)));
+ return <div className="challongeWrap doubleUnified"><div className="challongeTools"><strong>Double élimination · rattrapage et classements</strong><div><button onClick={()=>setZoom(z=>Math.max(.2,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} role="region" tabIndex="0" aria-label="Tableau de double élimination, déplacement horizontal et vertical"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{links.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(sec=><React.Fragment key={sec.key}><div className="doubleUnifiedHeading" style={{top:sec.offset,left:0,width}}>{sec.title}</div>{sec.rounds.map((r,i)=><div className="challongeRoundTitle" key={r} style={{left:i*(W+G),top:sec.offset+30,width:W}}>{sec.key==='places'?'Classement':sec.key==='grand'?'Finale':`Tour ${i+1}`}</div>)}{sec.nodes.map(({m,x,y})=>{const win=m.status==='done'?(Number(m.sa)>Number(m.sb)?m.a:m.b):null;return <div className="challongeMatch" key={m.id} style={{left:x,top:sec.offset+y,width:W}}><div className="challongeMatchHead">{sec.key==='places'?`Places ${m.place}–${m.place+1}`:sec.key==='grand'?'Grande finale':`Match ${all.indexOf(m)+1}`}<span>{m.status==='playing'?`Terrain ${m.court+1}`:m.status==='done'?'Terminé':'À jouer'}</span></div>{[m.a,m.b].map((id,i)=><div key={i} className={'challongeParticipant '+(win===id?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||'À déterminer'}</span><b>{m.status==='done'?(i?m.sb:m.sa):'–'}</b></div>)}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau, déplaçable et zoomable. Les nouvelles rencontres apparaissent à mesure que les tours sont terminés.</p></div>
+}
 function App(){const [s,setS]=useState(load),[name,setName]=useState(''),[tab,setTab]=useState('terrains'),[editing,setEditing]=useState({}),[message,setMessage]=useState('');useEffect(()=>localStorage.setItem('badminton-v1',JSON.stringify(s)),[s]);const cfg=settingsOf(s);const [timers,setTimers]=useState({});useEffect(()=>{if(cfg.mode!=='time')return;const interval=setInterval(()=>setTimers(old=>{let changed=false,next={...old};for(const id of s.courtIds){if(id&&next[id]?.running&&next[id].remaining>0){next[id]={...next[id],remaining:next[id].remaining-1};changed=true}}return changed?next:old}),1000);return()=>clearInterval(interval)},[s.courtIds.join(','),cfg.mode]);const clock=id=>{const t=timers[id],sec=t?.remaining??cfg.minutes*60;return <div className="courtTimer"><strong>{String(Math.floor(sec/60)).padStart(2,'0')}:{String(sec%60).padStart(2,'0')}</strong><button onClick={()=>setTimers(old=>({...old,[id]:{remaining:old[id]?.remaining??cfg.minutes*60,running:!old[id]?.running}}))}>{t?.running?'Pause':'Démarrer'}</button><button onClick={()=>setTimers(old=>({...old,[id]:{remaining:cfg.minutes*60,running:false}}))}>↺</button></div>};const teams=Object.fromEntries(s.teams.map(t=>[t.id,t]));const active=s.matches.filter(m=>m.phase===(s.phase==='final'?'final':'pool'));const waiting=active.filter(m=>m.status==='waiting'||m.status==='blocked');const done=active.filter(m=>m.status==='done');const poolGroups=Array.from({length:s.pools},(_,p)=>s.teams.filter(t=>s.poolAssignments?.[t.id]===p));const announce=x=>{setMessage(x);setTimeout(()=>setMessage(''),4500)};
 function schedule(state){let next={...state,matches:state.matches.map(m=>({...m})),courtIds:[...state.courtIds]};for(let c=0;c<next.courtIds.length;c++){if(next.courtIds[c])continue;let playing=new Set(next.matches.filter(m=>m.status==='playing').flatMap(m=>[m.a,m.b]));let m=next.matches.find(m=>m.status==='waiting'&&m.phase===(next.phase==='final'?'final':'pool')&&!playing.has(m.a)&&!playing.has(m.b));if(m){m.status='playing';m.court=c;next.courtIds[c]=m.id}}return next}
 function startPools(){

@@ -118,3 +118,10 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 
 /* V6 — composition des poules éditable */
 .poolDraft{margin:18px 0 8px}.poolDraftHeader{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.poolDraftHeader h4{margin:0 0 4px;color:#123e65}.poolDraftHeader p{margin:0;color:#526f88;font-size:13px}.poolDraftHeader button{background:#baff16;color:#102640}.poolDraftGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.poolDraftCard{background:#edf7ff;border:1px solid #a5cbe8;border-radius:12px;padding:13px}.poolDraftCard h4{display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;color:#123e65}.poolDraftCard h4 small{font-size:11px;color:#52799a}.poolDraftTeam{display:flex;align-items:center;gap:9px;padding:8px;margin:6px 0;background:#fff;border:1px solid #c3dced;border-radius:8px}.poolDraftTeam i{width:10px;height:18px;border-radius:3px;flex-shrink:0}.poolDraftTeam span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;font-weight:700}.poolDraftTeam select{max-width:110px;min-width:94px;padding:6px;border:1px solid #b7d3e8;border-radius:7px;background:#f7fcff;color:#173d60;font-size:12px}
+
+/* V7 — double élimination sur un seul canevas */
+.doubleUnifiedHeading{position:absolute;box-sizing:border-box;padding:5px 12px;background:#c9e6fc;border-left:5px solid #aaff00;color:#113b60;font-size:14px;font-weight:900;border-radius:5px;height:27px}
+.doubleUnified .challongeViewport{max-height:75vh;overflow:auto;touch-action:pan-x pan-y}
+.doubleUnified .challongeMatch{z-index:2}
+.doubleUnified .challongeLines{pointer-events:none;position:absolute;inset:0;z-index:1}
+.doubleUnified .challongeLines path{fill:none;stroke:#fff;stroke-width:2.5;filter:drop-shadow(0 1px 1px #35658d)}
