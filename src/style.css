@@ -82,3 +82,23 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .bracketWires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:0;pointer-events:none}
 .bracketWires path{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px #3c668a)}
 @media(max-width:700px){.bracketSeparateTitle{align-items:flex-start;flex-direction:column}.bracketSeparate .bracketScroll{padding:12px}}
+
+/* Tableau unique, défilement bidirectionnel, connexions blanches simples */
+.fullBracketWrap{margin-top:18px;border:1px solid #a7cae5;border-radius:13px;overflow:hidden;background:#cfe8fa}
+.fullBracketHelp{background:#d7ebfb;color:#194a73;font-size:12px;font-weight:750;padding:12px 16px}
+.fullBracketScroll{overflow:auto;width:100%;height:min(74vh,790px);min-height:420px;overscroll-behavior:contain;touch-action:pan-x pan-y;cursor:grab;scrollbar-color:#57a5db #d8ebfa}
+.fullBracketScroll:active{cursor:grabbing}
+.fullBracketCanvas{position:relative;background:linear-gradient(130deg,#b8d9f3,#e2f2ff);user-select:none}
+.fullBracketLines{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:1}
+.fullBracketLines path{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px #48718d)}
+.fullBracketHeader{position:absolute;top:0;height:40px;display:grid;place-items:center;background:#d5e8f8;border:1px solid #a8cde9;color:#153c5e;font-size:14px;font-weight:800}
+.fullBracketGroupTitle{position:absolute;left:0;right:0;color:#16476f;font-size:11px;letter-spacing:.09em;font-weight:950;pointer-events:none}
+.fullBracketGroupTitle.secondary{color:#345e7c}
+.fullBracketMatch{position:absolute;z-index:2;border:1px solid #9dc6e3;border-radius:6px;background:#fff;box-shadow:0 2px 8px #124c7620;overflow:hidden;color:#173c5d}
+.fullBracketMeta{height:22px;display:flex;justify-content:space-between;align-items:center;padding:2px 9px;background:#e4f2fd;color:#285f8a;font-size:10px}
+.fullBracketPlayer{height:33px;display:flex;align-items:center;gap:8px;padding:4px 9px;border-top:1px solid #d6e7f5;font-size:12px}
+.fullBracketPlayer i{width:6px;height:19px;flex-shrink:0;border-radius:2px}
+.fullBracketPlayer span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fullBracketPlayer b{font-size:13px}
+.fullBracketWinner{background:#e4ffc5}
+@media(max-width:700px){.fullBracketScroll{height:68vh;min-height:350px}}
