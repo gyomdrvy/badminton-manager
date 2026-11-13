@@ -93,3 +93,8 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .challongeMatch{position:absolute;background:#fff;border:1px solid #a7c9e2;border-radius:8px;box-shadow:0 3px 9px #164b721c;overflow:hidden;color:#173b5a}
 .challongeMatchHead{background:#dceefa;padding:6px 9px;font-size:11px;font-weight:900;display:flex;justify-content:space-between}.challongeMatchHead span{font-weight:600;color:#547c9c}
 .challongeParticipant{display:flex;align-items:center;gap:8px;padding:9px;min-height:36px;border-top:1px solid #dbe9f5;font-size:12px;font-weight:750}.challongeParticipant i{width:6px;height:21px;flex:none;border-radius:3px}.challongeParticipant span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.challongeParticipant b{font-size:14px}.challongeWinner{background:#e4ffc7}
+
+/* Vue Challonge unifiée : tous les classements sur un seul plan de travail */
+.bracketSections{display:block}
+.unifiedViewport{height:min(78vh,900px);min-height:460px;overflow:auto;touch-action:pan-x pan-y}
+.unifiedSectionHeading{position:absolute;height:33px;padding:7px 12px;background:#cde5f8;color:#173e62;font-weight:900;font-size:15px;border-bottom:1px solid #a4c9e5}
