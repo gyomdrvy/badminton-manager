@@ -169,22 +169,68 @@ function newDoubleNode(state,track,round,sourceA,sourceB,extra={}){
 }
 const direct=id=>({team:id});
 const from=(m,outcome)=>({id:m.id,outcome});
+// A partir des poules, on conserve l'ordre des têtes de série, mais on
+// permute uniquement des positions de force voisine pour limiter les rematches.
+function avoidPoolRematches(ids,assignments){
+ if(!assignments)return ids;
+ const result=[...ids],n=result.length,size=2**Math.ceil(Math.log2(n));
+ const slots=seedOrder(n===18?16:size);
+ const conflict=(order)=>{
+  const first=n===18?order.slice(0,14).concat([order[14],order[15]]):order;
+  let bad=0;
+  for(let i=0;i<slots.length;i+=2){const a=first[slots[i]-1],b=first[slots[i+1]-1];if(a&&b&&assignments[a]===assignments[b])bad++}
+  if(n===18){if(assignments[order[14]]===assignments[order[17]])bad++;if(assignments[order[15]]===assignments[order[16]])bad++;}
+  return bad;
+ };
+ let best=conflict(result);
+ // Déplacements locaux seulement : on conserve la hiérarchie générale des poules.
+ for(let pass=0;pass<4;pass++){
+  let improved=false;
+  for(let i=0;i<n;i++)for(let j=i+1;j<Math.min(n,i+5);j++){
+   [result[i],result[j]]=[result[j],result[i]];
+   const score=conflict(result);
+   if(score<best){best=score;improved=true}else [result[i],result[j]]=[result[j],result[i]];
+  }
+  if(!improved)break;
+ }
+ return result;
+}
 function doubleStart(state,ids){
  if(ids.length<2)throw Error('Il faut au moins deux équipes.');
- state.double={planned:true,champion:null,runner:null,entrants:[...ids]};
- const wb=[];const size=2**Math.ceil(Math.log2(ids.length));let entrants=seedOrder(size).map(i=>i<=ids.length?direct(ids[i-1]):{bye:true});
- for(let r=0;entrants.length>1;r++){
-  let round=[];for(let i=0;i<entrants.length;i+=2)round.push(newDoubleNode(state,'upper',r,entrants[i],entrants[i+1]));
-  wb.push(round);entrants=round.map(m=>from(m,'winner'));
+ state.double={planned:true,champion:null,runner:null,entrants:[...ids],seedRank:Object.fromEntries(ids.map((id,i)=>[id,i]))};
+ const wb=[],lb=[];
+ const use18=ids.length===18;
+ if(use18){
+  // Deux barrages d'entrée au tableau principal à 16 équipes.
+  const pre=[newDoubleNode(state,'upper',-1,direct(ids[14]),direct(ids[17])),newDoubleNode(state,'upper',-1,direct(ids[15]),direct(ids[16]))];
+  const mainEntrants=ids.slice(0,14).map(direct).concat(pre.map(m=>from(m,'winner')));
+  let entrants=seedOrder(16).map(i=>mainEntrants[i-1]);
+  for(let r=0;entrants.length>1;r++){
+   const round=[];for(let i=0;i<entrants.length;i+=2)round.push(newDoubleNode(state,'upper',r,entrants[i],entrants[i+1]));
+   wb.push(round);entrants=round.map(m=>from(m,'winner'));
+  }
+  // Les 2 moins bien classés parmi les 8 perdants du premier tour
+  // affrontent les perdants des préliminaires. Le classement est résolu
+  // seulement quand les huit matchs sont terminés.
+  const barrages=[newDoubleNode(state,'lower',-1,from(pre[0],'loser'),{lowerSeedLoser:0}),newDoubleNode(state,'lower',-1,from(pre[1],'loser'),{lowerSeedLoser:1})];
+  const arrivals=[...barrages.map(m=>from(m,'winner')),...Array.from({length:6},(_,i)=>({lowerSeedLoser:i+2}))];
+  const first=[];for(let i=0;i<arrivals.length;i+=2)first.push(newDoubleNode(state,'lower',0,arrivals[i],arrivals[i+1]));
+  lb.push([ ...barrages ],first);
+ }else{
+  const size=2**Math.ceil(Math.log2(ids.length));let entrants=seedOrder(size).map(i=>i<=ids.length?direct(ids[i-1]):{bye:true});
+  for(let r=0;entrants.length>1;r++){
+   const round=[];for(let i=0;i<entrants.length;i+=2)round.push(newDoubleNode(state,'upper',r,entrants[i],entrants[i+1]));
+   wb.push(round);entrants=round.map(m=>from(m,'winner'));
+  }
+  if(ids.length>2){
+   const arrivals=wb[0].map(m=>from(m,'loser')),first=[];
+   for(let i=0;i<arrivals.length;i+=2)first.push(newDoubleNode(state,'lower',0,arrivals[i],arrivals[i+1]));
+   lb.push(first);
+  }
  }
- const lb=[];
  if(ids.length>2){
-  let arrivals=wb[0].map(m=>from(m,'loser'));
-  let prev=[];const first=[];
-  for(let i=0;i<arrivals.length;i+=2)first.push(newDoubleNode(state,'lower',0,arrivals[i],arrivals[i+1]));
-  lb.push(first);prev=first;
+  let prev=lb.at(-1);
   for(let r=1;r<wb.length;r++){
-   // Les perdants du tour WB r rejoignent les survivants du rattrapage.
    const inject=[];
    for(let i=0;i<prev.length;i++)inject.push(newDoubleNode(state,'lower',2*r-1,from(prev[i],'winner'),from(wb[r][i],'loser')));
    lb.push(inject);prev=inject;
@@ -195,25 +241,20 @@ function doubleStart(state,ids){
    }
   }
  }
- // Pour n=2, le perdant du seul match WB arrive directement en finale.
- const lastLower=lb.length?lb[lb.length-1][0]:wb[0][0];
+ const lastLower=lb.length?lb.at(-1)[0]:wb[0][0];
  const lowerSource=lb.length?from(lastLower,'winner'):from(lastLower,'loser');
  const gf=newDoubleNode(state,'grand',0,from(wb.at(-1)[0],'winner'),lowerSource);
- const reset=newDoubleNode(state,'grand',1,from(gf,'loser'),from(gf,'winner'),{conditionalReset:true});
- // Chaque élimination effective du tableau des perdants produit exactement
- // un joueur à classer. Les exemptions ne constituent jamais une élimination.
+ newDoubleNode(state,'grand',1,from(gf,'loser'),from(gf,'winner'),{conditionalReset:true});
  const nodeById=Object.fromEntries(state.matches.map(m=>[m.id,m]));
  const viable=src=>{
   if(!src||src.bye)return false;
-  if(src.team)return true;
+  if(src.team||src.lowerSeedLoser!==undefined)return true;
   const m=nodeById[src.id];if(!m)return false;
   const a=viable(m.sourceA),b=viable(m.sourceB);
   return src.outcome==='winner'?(a||b):(a&&b);
  };
  const cohorts=lb.map(round=>round.map(m=>from(m,'loser')).filter(viable)).filter(group=>group.length);
  let nextPlace=3;
- // Un groupe de 4 joueurs génère 9-10 ET 11-12, jamais uniquement
- // une branche des perdants. Même règle pour 8, 16, etc.
  const classify=(sources,place,depth)=>{
   if(sources.length===1){state.double.rankSources[place]=sources[0];return;}
   if(sources.length===2){newDoubleNode(state,'places',depth,sources[0],sources[1],{place});return;}
@@ -224,8 +265,7 @@ function doubleStart(state,ids){
  };
  state.double.rankSources={};
  for(const group of cohorts.reverse()){
-  classify(group,nextPlace,0);
-  nextPlace+=group.length;
+  classify(group,nextPlace,0);nextPlace+=group.length;
  }
  if(nextPlace!==ids.length+1)throw Error(`Classement incomplet : ${nextPlace-1} places pour ${ids.length} équipes`);
  doubleAdvance(state);return state;
@@ -235,6 +275,13 @@ function doubleAdvance(state){
  const byId=Object.fromEntries(state.matches.map(m=>[m.id,m]));
  const resolve=src=>{
   if(!src)return null;if(src.bye)return null;if(src.team)return src.team;
+  if(src.lowerSeedLoser!==undefined){
+   const first=state.matches.filter(x=>x.track==='upper'&&x.round===0);
+   if(first.some(x=>!['done','bye'].includes(x.status)))return undefined;
+   const losers=first.filter(x=>x.status==='done').map(x=>Number(x.sa)>Number(x.sb)?x.b:x.a);
+   losers.sort((a,b)=>(state.double.seedRank[b]??-1)-(state.double.seedRank[a]??-1));
+   return losers[src.lowerSeedLoser]??null;
+  }
   const m=byId[src.id];if(!m||!['done','bye'].includes(m.status))return undefined;
   if(m.status==='bye')return src.outcome==='winner'?(m.a||m.b):null;
   const w=Number(m.sa)>Number(m.sb)?m.a:m.b;
@@ -530,7 +577,7 @@ function beginFinal(){
   const ordered=[];for(let i=0;ordered.length<s.teams.length;i++)for(const group of standings)if(group[i])ordered.push(group[i].id);
   if(ordered.length<2){announce('Il faut au moins deux équipes.');return}
   const next={...s,phase:'final',matches:[...s.matches],courtIds:Array(cfg.courts).fill(null),finalSize:ordered.length,finalPositions:{},finalGroups:[],finalRounds:[]};
-  doubleStart(next,ordered);setS(schedule(next));setTab('tableau');announce('Double élimination créée à partir du classement des poules.');return;
+  doubleStart(next,avoidPoolRematches(ordered,s.poolAssignments));setS(schedule(next));setTab('tableau');announce('Double élimination créée à partir du classement des poules.');return;
  }
 if(s.matches.some(m=>m.phase==='pool'&&m.status!=='done')){announce('Terminer tous les matchs de poules.');return}const standings=poolGroups.map(g=>ranks(g,s.matches.filter(m=>m.phase==='pool')));let order=[];for(let i=0;order.length<s.teams.length;i++)for(let group of standings)if(group[i])order.push(group[i].id);if(order.length<2)return;let n=order.length,power=2**Math.floor(Math.log2(n)),prelimCount=n-power;let state={...s,phase:'final',courtIds:Array(cfg.courts).fill(null),finalRounds:[],finalSize:n,finalGroups:[],finalPositions:{},prelimIds:[],prelimDirect:[],prelimFinished:prelimCount===0,matches:[...s.matches]};if(prelimCount){const direct=order.slice(0,power-prelimCount);const contestants=order.slice(power-prelimCount);state.prelimDirect=direct;for(let i=0;i<contestants.length;i+=2){let m={id:uid(),a:contestants[i],b:contestants[i+1],phase:'final',round:-1,groupKey:'PRE',status:'waiting',sa:'',sb:'',court:null};state.matches.push(m);state.prelimIds.push(m.id)}}else createGroup(state,order,1,0,'F');setS(schedule(state));setTab('tableau');announce(prelimCount?`${prelimCount} matchs préliminaires programmés sur les terrains.`:'Phase finale prête sur les terrains.')}
 function launchTournament(){
