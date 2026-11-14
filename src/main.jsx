@@ -109,16 +109,21 @@ function BracketSection({title,stages,teams}){
 }
 // Tableau principal type Challonge : placement calculé à partir des vainqueurs uniquement.
 function UnifiedBracket({stages,teams,classificationPaths}){
- const viewport=useRef(null),[zoom,setZoom]=useState(1);
- const W=222,GAP=38,STEP=108,TOP=94,SECTION_GAP=26,CARD_H=92;
- const roots=[{path:'F',label:'🏆 Tableau principal'},...classificationPaths.map(x=>({path:x.path,label:x.label}))];
+ const viewport=useRef(null),[zoom,setZoom]=useState(.85);
+ const W=222,GAP=42,STEP=118,TOP=128,SECTION_GAP=38,CARD_H=102;
+ const roots=[{path:'F',label:'🏆 Tableau principal',start:1},...classificationPaths];
  const sections=[];let offset=0;
+ const prelimStage=stages.findIndex(s=>s.title==='Tour préliminaire');
+ const mainStages=stages.map((s,i)=>i).filter(i=>i!==prelimStage);
+ const titleForStage=(stageIndex)=>{
+  if(stageIndex===prelimStage)return 'Tour préliminaire';
+  const remaining=mainStages.filter(i=>i>=stageIndex).length;
+  return ({1:'Finale',2:'Demi-finales',3:'Quarts de finale',4:'Huitièmes de finale',5:'Seizièmes de finale',6:'32es de finale'})[remaining]||`Tour ${stageIndex+1}`;
+ };
  for(const root of roots){
-  // Les colonnes correspondent aux tours du tableau principal : toutes les finales
-  // de classement sont donc alignées verticalement avec la finale principale.
   const columns=stages.map((stage,stageIndex)=>({stageIndex,entries:stage.matches.filter(m=>{
    const path=m.path||'';
-   return (root.path==='F'&&path===''&&m.track==='Préliminaires')||path===root.path||(path.startsWith(root.path)&&/^W+$/.test(path.slice(root.path.length)));
+   return (root.path==='F'&&stage.title==='Tour préliminaire'&&m.track==='Préliminaires')||path===root.path||(path.startsWith(root.path)&&/^W+$/.test(path.slice(root.path.length)));
   })})).filter(c=>c.entries.length);
   if(!columns.length)continue;
   const positions=new Map();
@@ -130,16 +135,16 @@ function UnifiedBracket({stages,teams,classificationPaths}){
    positions.set(entry.number,{x:stageIndex*(W+GAP),y,entry,stageIndex});
   }));
   const nodes=[...positions.values()];
-  // On évite que les branches secondaires se superposent, sans changer leur tour.
   const minY=Math.min(...nodes.map(n=>n.y));
   for(const n of nodes)n.y=n.y-minY+TOP;
-  const sectionHeight=Math.max(130,...nodes.map(n=>n.y+CARD_H))+4;
+  const sectionHeight=Math.max(260,...nodes.map(n=>n.y+CARD_H+20));
   const lastStage=Math.max(...nodes.map(n=>n.stageIndex));
   const finalNodes=nodes.filter(n=>n.stageIndex===lastStage);
-  sections.push({root,columns,nodes,positions,offset,height:sectionHeight,finalNodes});
+  const label=root.path==='F'?'🏆 Tableau principal':`🏸 Match places ${root.start}–${Math.min(root.start+1,root.finish||root.start+1)}`;
+  sections.push({root,label,columns,nodes,positions,offset,height:sectionHeight,finalNodes});
   offset+=sectionHeight+SECTION_GAP;
  }
- const width=Math.max(600,stages.length*(W+GAP)-GAP+25),height=Math.max(220,offset-SECTION_GAP+10);
+ const width=Math.max(600,stages.length*(W+GAP)-GAP+25),height=Math.max(260,offset-SECTION_GAP+10);
  const lines=[];
  for(const section of sections)for(const node of section.nodes)for(const slot of node.entry.slots){
   const m=String(slot.label||'').match(/^Vainqueur du match (\d+)$/i);if(!m)continue;
@@ -148,13 +153,7 @@ function UnifiedBracket({stages,teams,classificationPaths}){
   lines.push(`M${x1},${y1} H${mid} V${y2} H${x2}`);
  }
  const fit=()=>{const available=viewport.current?.clientWidth||900;setZoom(Math.max(.15,Math.min(1,(available-30)/width)))};
- const placementLabel=(section)=>{
-  const match=section.finalNodes[0];
-  if(!match)return section.root.label;
-  const label=section.root.label.replace(/^🏸\s*/, '').replace(/^Classement\s*[—–-]\s*/i,'');
-  return /^places?\s+/i.test(label)?`Classement ${label}`:section.root.label;
- };
- return <div className="challongeWrap"><div className="challongeTools"><strong>🏆 Tableau complet · classement intégral</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} tabIndex="0" role="region" aria-label="Tableau complet, déplaçable horizontalement et verticalement"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{lines.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(section=><React.Fragment key={section.root.path}>{<><div className="unifiedSectionHeading" style={{top:section.offset,left:0,width}}>{section.root.label}</div>{section.columns.map(({stageIndex},i)=><div key={stageIndex} className="challongeRoundTitle" style={{top:section.offset+38,left:stageIndex*(W+GAP),width:W}}>{section.root.path==='F'&&stages[stageIndex]?.title==='Tour préliminaire'?'Tour préliminaire':i===section.columns.length-1?(section.root.path==='F'?'Finale':'Match de classement'):i===section.columns.length-2?'Demi-finales':i===section.columns.length-3?'Quarts de finale':i===section.columns.length-4?'Huitièmes de finale':i===section.columns.length-5?'Seizièmes de finale':`Tour ${i+1}`}</div>)}</>}{section.nodes.map(({x,y,entry})=>{const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div key={entry.number} className="challongeMatch" style={{left:x,top:section.offset+y,width:W}}><div className="challongeMatchHead">Match {entry.number}<span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j?'b':'a']||slot.id;return <div key={j} className={'challongeParticipant '+(winner===id&&winner?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||slot.label||'À déterminer'}</span><b>{m?.status==='done'?(j?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau · glisser horizontalement ou verticalement · zoom pour voir l'ensemble.</p></div>;
+ return <div className="challongeWrap"><div className="challongeTools"><strong>🏆 Tableau complet · classement intégral</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} tabIndex="0" role="region" aria-label="Tableau complet, déplaçable horizontalement et verticalement"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{lines.map((d,i)=><path d={d} key={i}/>)}</svg>{sections.map(section=><React.Fragment key={section.root.path}><div className="unifiedSectionHeading" style={{top:section.offset,left:0,width}}>{section.label}</div>{section.columns.map(({stageIndex})=><div key={stageIndex} className="challongeRoundTitle" style={{top:section.offset+62,left:stageIndex*(W+GAP),width:W}}>{section.root.path==='F'?titleForStage(stageIndex):stageIndex===section.columns.at(-1).stageIndex?section.label.replace(/^🏸 /,''):`Classement · ${titleForStage(stageIndex)}`}</div>)}{section.nodes.map(({x,y,entry})=>{const m=entry.actual,winner=m?.status==='done'?(+m.sa>+m.sb?m.a:m.b):null;return <div key={entry.number} className="challongeMatch" style={{left:x,top:section.offset+y,width:W}}><div className="challongeMatchHead">Match {entry.number}<span>{m?.status==='playing'?`Terrain ${m.court+1}`:m?.status==='done'?'Terminé':m?'À jouer':'À venir'}</span></div>{entry.slots.map((slot,j)=>{const id=m?.[j?'b':'a']||slot.id;return <div key={j} className={'challongeParticipant '+(winner===id&&winner?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||slot.label||'À déterminer'}</span><b>{m?.status==='done'?(j?m.sb:m.sa):'–'}</b></div>})}</div>})}</React.Fragment>)}</div></div></div><p className="bracketHint">Un seul tableau · tour préliminaire compris · classements rangés par places · zoom et déplacement libres.</p></div>;
 }
 
 // Tableau préconstruit : chaque rencontre possède deux sources explicites.
@@ -346,7 +345,7 @@ const classificationPaths=useMemo(()=>{
   if(path==='P'){start=power+1;size=(s.finalSize||power)-power;}
   else for(const outcome of path.slice(1)){size=Math.max(1,size/2);if(outcome==='L')start+=size;}
   const finish=Math.min(s.finalSize,start+Math.max(1,size)-1);
-  return {path,label:`🏸 Classement — places ${start} à ${finish}`,start};
+  return {path,label:`Match places ${start}–${Math.min(start+1,finish)}`,start,finish};
  }).sort((a,b)=>a.start-b.start||a.path.length-b.path.length||a.path.localeCompare(b.path));
 },[bracketPlan,s.finalSize]);
 
