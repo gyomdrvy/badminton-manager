@@ -347,17 +347,17 @@ function DoubleBracket({matches,teams}){
     const y=Math.max(desired,prevBottom+ROW);coords.set(m.id,y);prevBottom=y;
    });
   }
-  // Recaler aussi les barrages préliminaires : leur vainqueur doit
-  // arriver exactement à la hauteur de la rencontre qu'il alimente.
-  // On remonte les tours pour éviter les décalages arbitraires.
+  // Retrouver l'arbre compact : déplacer les paires sans inverser leur ordre.
   for(let c=byRound.length-2;c>=0;c--){
-   const currentIds=new Set(byRound[c].map(m=>m.id));
    for(const target of byRound[c+1]){
+    const currentIds=new Set(byRound[c].map(m=>m.id));
     const sources=[target.sourceA,target.sourceB].filter(src=>src?.id&&src.outcome==='winner'&&currentIds.has(src.id));
-    if(sources.length===1)coords.set(sources[0].id,coords.get(target.id));
-    else if(sources.length===2){
-     const [a,b]=sources.map(src=>src.id),center=coords.get(target.id);
-     coords.set(a,center-ROW/2);coords.set(b,center+ROW/2);
+    if(sources.length===2){
+     const [a,b]=sources.map(src=>src.id),middle=coords.get(target.id);
+     const shift=middle-(coords.get(a)+coords.get(b))/2;
+     coords.set(a,coords.get(a)+shift);coords.set(b,coords.get(b)+shift);
+    }else if(sources.length===1){
+     coords.set(sources[0].id,coords.get(target.id));
     }
    }
   }
@@ -416,16 +416,36 @@ function DoubleBracket({matches,teams}){
  blocks.push({key:'grand',title:'Grande finale et finale décisive',y:0,rounds:[]});
  const width=(resetCol+1)*STEP+20;
  const height=Math.max(leafCursor+24,...[...positions.values()].map(p=>p.y+H+35));
+ // Ne tracer QUE les branches internes d'un arbre : les vainqueurs.
+ // Les transferts entre tableau principal, rattrapage et classement sont sans trait.
+ // Les deux finales partagées par une paire de demi-finales ne sont donc pas
+ // reliées par des traits de perdants.
  const links=[];
  for(const target of positions.values()){
   const sources=[target.m.sourceA,target.m.sourceB];
+  const inbound=[];
   for(let side=0;side<2;side++){
-   const src=sources[side];if(!src?.id||(src.outcome!=='winner'&&target.key!=='places'))continue;
+   const src=sources[side];if(!src?.id||src.outcome!=='winner')continue;
    const origin=positions.get(src.id);if(!origin||origin.x>=target.x)continue;
-   // Two sources maximum; draw each individually with 90-degree elbows.
-   const x1=origin.x+W,x2=target.x,y1=origin.y+H/2,y2=target.y+H/2;
-   const mid=x1+(x2-x1)/2;
-   links.push({d:Math.abs(y2-y1)<2?`M${x1} ${y1} H${x2}`:`M${x1} ${y1} H${mid} V${y2} H${x2}`,key:`${origin.m.id}-${target.m.id}-${side}`});
+   const internal=origin.key===target.key;
+   const mainFinal=origin.key==='upper'&&target.key==='grand';
+   const resetFinal=origin.key==='grand'&&target.key==='grand';
+   if(!internal&&!mainFinal&&!resetFinal)continue;
+   inbound.push({origin,side});
+  }
+  // Deux arrivées au maximum. Si les deux matchs forment une paire, les
+  // raccorder au même coude, comme dans l'arbre de classement intégral.
+  const x2=target.x,y2=target.y+H/2;
+  if(inbound.length===2&&Math.abs(inbound[0].origin.x-inbound[1].origin.x)<2){
+   const a=inbound[0].origin,b=inbound[1].origin;
+   const x1=a.x+W,mid=x1+(x2-x1)/2;
+   const ya=a.y+H/2,yb=b.y+H/2;
+   links.push({d:`M${x1} ${ya} H${mid} M${x1} ${yb} H${mid} M${mid} ${Math.min(ya,yb)} V${Math.max(ya,yb)} M${mid} ${(ya+yb)/2} H${x2} V${y2}`,key:`pair-${target.m.id}`});
+  }else{
+   for(const {origin,side} of inbound){
+    const x1=origin.x+W,y1=origin.y+H/2,mid=x1+(x2-x1)/2;
+    links.push({d:Math.abs(y2-y1)<2?`M${x1} ${y1} H${x2}`:`M${x1} ${y1} H${mid} V${y2} H${x2}`,key:`${origin.m.id}-${target.m.id}-${side}`});
+   }
   }
  }
  const labels=src=>{
@@ -434,7 +454,7 @@ function DoubleBracket({matches,teams}){
   return `${src.outcome==='winner'?'Vainqueur':'Perdant'} du match ${m?.number||'?'}`;
  };
  const fit=()=>setZoom(Math.max(.15,Math.min(1,((viewport.current?.clientWidth||900)-25)/width)));
- return <div className="challongeWrap doubleUnified"><div className="challongeTools"><strong>Double élimination · arbres reliés et classements alignés</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} role="region" tabIndex="0" aria-label="Tableau complet de double élimination"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{links.map(({d,key})=><path d={d} key={key}/>)}</svg>{blocks.filter(b=>b.key!=='grand').map(b=><React.Fragment key={b.key}><div className="doubleUnifiedHeading" style={{top:b.y,left:0,width}}>{b.title}</div>{b.rounds.map(r=><div className="challongeRoundTitle" key={r.r} style={{left:r.x,top:b.y+30,width:W}}>{r.label}</div>)}</React.Fragment>)}<div className="challongeRoundTitle" style={{left:grandCol*STEP,top:30,width:W}}>Grande finale</div><div className="challongeRoundTitle" style={{left:resetCol*STEP,top:30,width:W}}>Finale décisive</div>{[...positions.values()].map(({m,x,y})=>{const win=m.status==='done'?(Number(m.sa)>Number(m.sb)?m.a:m.b):null;return <div className={'challongeMatch '+(m.status==='skipped'?'doubleSkipped':'')} key={m.id} style={{left:x,top:y,width:W}}><div className="challongeMatchHead">{m.place?`Places ${m.place}–${m.place+1}`:m.conditionalReset?'Finale décisive (si nécessaire)':`Match ${m.number}`}<span>{m.status==='playing'?`Terrain ${m.court+1}`:m.status==='done'?'Terminé':m.status==='skipped'?'Non nécessaire':'À venir'}</span></div>{[0,1].map(i=>{const id=i?m.b:m.a;return <div key={i} className={'challongeParticipant '+(win===id&&win?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||labels(i?m.sourceB:m.sourceA)}</span><b>{m.status==='done'?(i?m.sb:m.sa):'–'}</b></div>})}</div>})}</div></div></div><p className="bracketHint">Le tableau principal et le rattrapage sont reliés jusqu’à la grande finale. Les finales de classement sont alignées dans la colonne de la grande finale.</p></div>;
+ return <div className="challongeWrap doubleUnified"><div className="challongeTools"><strong>Double élimination · arbres reliés et classements alignés</strong><div><button onClick={()=>setZoom(z=>Math.max(.15,+(z-.1).toFixed(2)))}>−</button><span>{Math.round(zoom*100)} %</span><button onClick={()=>setZoom(z=>Math.min(1.5,+(z+.1).toFixed(2)))}>+</button><button onClick={()=>setZoom(1)}>100 %</button><button onClick={fit}>Vue complète</button></div></div><div className="challongeViewport unifiedViewport" ref={viewport} role="region" tabIndex="0" aria-label="Tableau complet de double élimination"><div style={{width:width*zoom,height:height*zoom,position:'relative'}}><div className="challongeCanvas" style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg className="challongeLines" width={width} height={height} aria-hidden="true">{links.map(({d,key})=><path d={d} key={key}/>)}</svg>{blocks.filter(b=>b.key!=='grand').map(b=><React.Fragment key={b.key}><div className="doubleUnifiedHeading" style={{top:b.y,left:0,width}}>{b.title}</div>{b.rounds.map(r=><div className="challongeRoundTitle" key={r.r} style={{left:r.x,top:b.y+30,width:W}}>{r.label}</div>)}</React.Fragment>)}<div className="challongeRoundTitle" style={{left:grandCol*STEP,top:30,width:W}}>Grande finale</div><div className="challongeRoundTitle" style={{left:resetCol*STEP,top:30,width:W}}>Finale décisive</div>{[...positions.values()].map(({m,x,y})=>{const win=m.status==='done'?(Number(m.sa)>Number(m.sb)?m.a:m.b):null;return <div className={'challongeMatch '+(m.status==='skipped'?'doubleSkipped':'')} key={m.id} style={{left:x,top:y,width:W}}><div className="challongeMatchHead">{m.place?`Places ${m.place}–${m.place+1}`:m.conditionalReset?'Finale décisive (si nécessaire)':`Match ${m.number}`}<span>{m.status==='playing'?`Terrain ${m.court+1}`:m.status==='done'?'Terminé':m.status==='skipped'?'Non nécessaire':'À venir'}</span></div>{[0,1].map(i=>{const id=i?m.b:m.a;return <div key={i} className={'challongeParticipant '+(win===id&&win?'challongeWinner':'')}><i style={{background:teams[id]?.color||'#a5b9ca'}}/><span>{teams[id]?.name||labels(i?m.sourceB:m.sourceA)}</span><b>{m.status==='done'?(i?m.sb:m.sa):'–'}</b></div>})}</div>})}</div></div></div><p className="bracketHint">Les traits relient uniquement les vainqueurs au sein de leur arbre. Aucun trait de transfert entre tableau principal, rattrapage et classement.</p></div>;
 }
 
 // Import autonome de listes Excel (.xlsx) et CSV, sans dépendance externe.
