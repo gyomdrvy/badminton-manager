@@ -135,3 +135,18 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .unifiedSectionHeading{box-sizing:border-box;z-index:4;height:38px;padding:9px 12px}
 .unifiedViewport .challongeRoundTitle{box-sizing:border-box;z-index:3;min-height:32px;padding:7px 8px}
 .unifiedViewport .challongeMatch{z-index:2}
+
+/* V13 : tableau compact et finales de classement sur une même verticale. */
+.unifiedViewport .challongeMatchHead{padding:3px 6px;font-size:10px;min-height:19px;box-sizing:border-box}
+.unifiedViewport .challongeParticipant{padding:3px 6px;min-height:31px;font-size:10px;gap:5px;box-sizing:border-box}
+.unifiedViewport .challongeParticipant i{height:17px;width:5px}
+.unifiedViewport .challongeParticipant b{font-size:12px}
+.unifiedViewport .challongeMatch{border-radius:6px;box-shadow:0 2px 5px #164b7218}
+.unifiedViewport .challongeRoundTitle{padding:4px 5px;min-height:25px;font-size:11px}
+.unifiedViewport .challongeLines path{stroke-width:2}
+.unifiedViewport{height:min(78vh,860px)}
+
+/* V14 : import de listes Excel dans la préparation des équipes */
+.excelImport{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0;padding:14px 16px;border:1px solid #36546b;border-radius:12px;background:rgba(13,36,58,.75)}
+.excelImport strong{display:block;color:#e9f7ff;font-weight:750;margin-bottom:5px}.excelImport p{margin:0;color:#9db5c8;font-size:12px;max-width:570px;line-height:1.5}
+.excelImportButton{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;background:#b9ff35;color:#11263c;padding:10px 15px;border-radius:9px;font-weight:800;white-space:nowrap;position:relative;overflow:hidden}.excelImportButton:hover{filter:brightness(1.07)}.excelImportButton.disabled{opacity:.45;cursor:not-allowed}.excelImportButton input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
