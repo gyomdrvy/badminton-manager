@@ -347,17 +347,17 @@ function DoubleBracket({matches,teams}){
     const y=Math.max(desired,prevBottom+ROW);coords.set(m.id,y);prevBottom=y;
    });
   }
-  // Align predecessor pairs around their receiving match, with sufficient
-  // spacing to prevent overlap (especially in the losers' bracket).
+  // Recaler aussi les barrages préliminaires : leur vainqueur doit
+  // arriver exactement à la hauteur de la rencontre qu'il alimente.
+  // On remonte les tours pour éviter les décalages arbitraires.
   for(let c=byRound.length-2;c>=0;c--){
-   const targets=byRound[c+1];
-   for(const target of targets){
-    const sources=[target.sourceA,target.sourceB].filter(s=>s?.id&&s.outcome==='winner'&&byRound[c].some(m=>m.id===s.id));
-    if(sources.length===2){
-     const [a,b]=sources.map(s=>s.id);const middle=coords.get(target.id);
-     const old=(coords.get(a)+coords.get(b))/2;
-     const delta=middle-old;
-     coords.set(a,coords.get(a)+delta);coords.set(b,coords.get(b)+delta);
+   const currentIds=new Set(byRound[c].map(m=>m.id));
+   for(const target of byRound[c+1]){
+    const sources=[target.sourceA,target.sourceB].filter(src=>src?.id&&src.outcome==='winner'&&currentIds.has(src.id));
+    if(sources.length===1)coords.set(sources[0].id,coords.get(target.id));
+    else if(sources.length===2){
+     const [a,b]=sources.map(src=>src.id),center=coords.get(target.id);
+     coords.set(a,center-ROW/2);coords.set(b,center+ROW/2);
     }
    }
   }
@@ -378,28 +378,36 @@ function DoubleBracket({matches,teams}){
  // classification below 16th place. Each final occupies the grand-final column.
  const placeById=new Map(places.map(m=>[m.id,m]));
  const placeFinals=places.filter(m=>Number.isInteger(m.place)).sort((a,b)=>a.place-b.place);
- const placed=new Set();
- let leafCursor=nextY+HEADER;
- function placeTree(match,depth=0){
-  if(placed.has(match.id))return positions.get(match.id)?.y??leafCursor;
-  const children=[match.sourceA,match.sourceB].map(src=>placeById.get(src?.id)).filter(Boolean);
-  const ys=children.map(child=>placeTree(child,depth+1));
-  const y=ys.length?ys.reduce((a,b)=>a+b,0)/ys.length:leafCursor;
-  if(!ys.length)leafCursor+=ROW;
-  const x=Math.max(0,grandCol-depth)*STEP;
-  positions.set(match.id,{m:match,x,y,key:'places'});
-  placed.add(match.id);
-  return y;
+ // Une finale par paire de places. Les deux finales issues des mêmes
+ // demi-finales partagent leurs sources mais jamais leurs coordonnées.
+ // Les rencontres amont se centrent entre toutes leurs finales descendantes.
+ const placementTop=nextY+HEADER;
+ const finalYs=new Map(placeFinals.map((m,i)=>[m.id,placementTop+i*ROW]));
+ const descendants=new Map();
+ const visit=(id,finalId,seen=new Set())=>{
+  if(seen.has(id))return;seen.add(id);
+  if(!descendants.has(id))descendants.set(id,new Set());
+  descendants.get(id).add(finalId);
+  const m=placeById.get(id);
+  if(!m)return;
+  for(const src of [m.sourceA,m.sourceB])if(placeById.has(src?.id))visit(src.id,finalId,seen);
+ };
+ for(const m of placeFinals)visit(m.id,m.id);
+ // Chaque rencontre est à une colonne par niveau avant la finale.
+ const depths=new Map();
+ const depthVisit=(id,d,seen=new Set())=>{
+  if(seen.has(id))return;seen.add(id);
+  depths.set(id,Math.max(depths.get(id)||0,d));
+  const m=placeById.get(id);
+  if(m)for(const src of [m.sourceA,m.sourceB])if(placeById.has(src?.id))depthVisit(src.id,d+1,seen);
+ };
+ for(const m of placeFinals)depthVisit(m.id,0);
+ for(const m of places){
+  const finals=[...(descendants.get(m.id)||[])];
+  const y=finals.length?finals.reduce((sum,id)=>sum+finalYs.get(id),0)/finals.length:placementTop+placeFinals.length*ROW;
+  positions.set(m.id,{m,x:Math.max(0,grandCol-(depths.get(m.id)||0))*STEP,y,key:'places'});
  }
- // Sort the roots by actual classification place, then allocate separate
- // vertical bands so branches never overlap or cross one another.
- for(const m of placeFinals){
-  if(placed.has(m.id))continue;
-  const before=leafCursor;
-  placeTree(m);
-  leafCursor=Math.max(leafCursor,before+ROW)+ROW/2;
- }
- for(const m of places){if(!placed.has(m.id)){placeTree(m);leafCursor+=ROW/2;}}
+ const leafCursor=placementTop+(placeFinals.length+1)*ROW;
  if(places.length)blocks.push({key:'places',title:'Matchs de classement',y:nextY,rounds:[]});
  // Both grand finals follow the winners' final horizontally, at its exact Y.
  const upperFinal=upper.filter(m=>m.round===Math.max(...upperRounds))[0];
@@ -412,7 +420,7 @@ function DoubleBracket({matches,teams}){
  for(const target of positions.values()){
   const sources=[target.m.sourceA,target.m.sourceB];
   for(let side=0;side<2;side++){
-   const src=sources[side];if(!src?.id||src.outcome!=='winner')continue;
+   const src=sources[side];if(!src?.id||(src.outcome!=='winner'&&target.key!=='places'))continue;
    const origin=positions.get(src.id);if(!origin||origin.x>=target.x)continue;
    // Two sources maximum; draw each individually with 90-degree elbows.
    const x1=origin.x+W,x2=target.x,y1=origin.y+H/2,y2=target.y+H/2;
