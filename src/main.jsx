@@ -335,16 +335,17 @@ function DoubleBracket({matches,teams}){
  // incoming winning matches. Sources from the other track are not drawn as
  // a fictitious winning-tree branch.
  function addTrack(ms,key,title,startY){
+  const pitch=key==='upper'?83:ROW;
   if(!ms.length)return startY;
   const rounds=roundsOf(ms),byRound=rounds.map(r=>ms.filter(m=>m.round===r));
   const coords=new Map();
-  byRound[0].forEach((m,i)=>coords.set(m.id,i*ROW));
+  byRound[0].forEach((m,i)=>coords.set(m.id,i*pitch));
   for(let c=1;c<byRound.length;c++){
-   let prevBottom=-ROW;
+   let prevBottom=-pitch;
    byRound[c].forEach((m,i)=>{
     const incoming=[m.sourceA,m.sourceB].filter(s=>s?.id&&s.outcome==='winner'&&coords.has(s.id));
-    const desired=incoming.length?incoming.reduce((sum,s)=>sum+coords.get(s.id),0)/incoming.length:i*ROW*Math.max(1,2**c);
-    const y=Math.max(desired,prevBottom+ROW);coords.set(m.id,y);prevBottom=y;
+    const desired=incoming.length?incoming.reduce((sum,s)=>sum+coords.get(s.id),0)/incoming.length:i*pitch*Math.max(1,2**c);
+    const y=Math.max(desired,prevBottom+pitch);coords.set(m.id,y);prevBottom=y;
    });
   }
   // Retrouver l'arbre compact : déplacer les paires sans inverser leur ordre.
@@ -363,7 +364,14 @@ function DoubleBracket({matches,teams}){
   }
   // Normalize the full track and keep all cards separated in every column.
   const min=Math.min(...coords.values());for(const [id,y] of coords)coords.set(id,y-min);
-  for(const group of byRound){let last=-ROW;for(const m of group){const y=Math.max(coords.get(m.id),last+ROW);coords.set(m.id,y);last=y;}}
+  for(const group of byRound){let last=-pitch;for(const m of group){const y=Math.max(coords.get(m.id),last+pitch);coords.set(m.id,y);last=y;}}
+  if(key==='upper'){
+   const prelim=ms.filter(m=>m.round<0);
+   for(const m of prelim){
+    const target=ms.find(t=>t.round===0&&[t.sourceA,t.sourceB].some(src=>src?.id===m.id&&src.outcome==='winner'));
+    if(target&&coords.has(target.id))coords.set(m.id,coords.get(target.id));
+   }
+  }
   const bottom=Math.max(...[...coords.values()].map(y=>y+H));
   for(let c=0;c<byRound.length;c++)for(const m of byRound[c])positions.set(m.id,{m,x:c*STEP,y:startY+HEADER+coords.get(m.id),key});
   blocks.push({key,title,y:startY,rounds:rounds.map((r,i)=>({r,x:i*STEP,label:`Tour ${i+1}`}))});
@@ -382,18 +390,18 @@ function DoubleBracket({matches,teams}){
  // demi-finales partagent leurs sources mais jamais leurs coordonnées.
  // Les rencontres amont se centrent entre toutes leurs finales descendantes.
  const placementTop=nextY+HEADER;
+ // Reserve a separate row for EVERY placement final, including 9-10,
+ // 13-14 and 17-18; never infer the visible matches from only winner links.
  const finalYs=new Map(placeFinals.map((m,i)=>[m.id,placementTop+i*ROW]));
  const descendants=new Map();
  const visit=(id,finalId,seen=new Set())=>{
   if(seen.has(id))return;seen.add(id);
   if(!descendants.has(id))descendants.set(id,new Set());
   descendants.get(id).add(finalId);
-  const m=placeById.get(id);
-  if(!m)return;
+  const m=placeById.get(id);if(!m)return;
   for(const src of [m.sourceA,m.sourceB])if(placeById.has(src?.id))visit(src.id,finalId,seen);
  };
  for(const m of placeFinals)visit(m.id,m.id);
- // Chaque rencontre est à une colonne par niveau avant la finale.
  const depths=new Map();
  const depthVisit=(id,d,seen=new Set())=>{
   if(seen.has(id))return;seen.add(id);
@@ -402,10 +410,24 @@ function DoubleBracket({matches,teams}){
   if(m)for(const src of [m.sourceA,m.sourceB])if(placeById.has(src?.id))depthVisit(src.id,d+1,seen);
  };
  for(const m of placeFinals)depthVisit(m.id,0);
+ const columns=new Map();
  for(const m of places){
   const finals=[...(descendants.get(m.id)||[])];
-  const y=finals.length?finals.reduce((sum,id)=>sum+finalYs.get(id),0)/finals.length:placementTop+placeFinals.length*ROW;
-  positions.set(m.id,{m,x:Math.max(0,grandCol-(depths.get(m.id)||0))*STEP,y,key:'places'});
+  const y=finalYs.has(m.id)?finalYs.get(m.id):finals.length?finals.reduce((sum,id)=>sum+finalYs.get(id),0)/finals.length:placementTop+placeFinals.length*ROW;
+  const col=Math.max(0,grandCol-(depths.get(m.id)||0));
+  if(!columns.has(col))columns.set(col,[]);
+  columns.get(col).push({m,y});
+ }
+ // Non-final feeder matches can share two descendant finals; separate
+ // them vertically while keeping the finals in exact ranking order.
+ for(const [col,nodes] of columns){
+  nodes.sort((a,b)=>a.y-b.y||a.m.number-b.m.number);
+  let previous=-Infinity;
+  for(const node of nodes){
+   const y=finalYs.has(node.m.id)?node.y:Math.max(node.y,previous+ROW);
+   positions.set(node.m.id,{m:node.m,x:col*STEP,y,key:'places'});
+   previous=y;
+  }
  }
  const leafCursor=placementTop+(placeFinals.length+1)*ROW;
  if(places.length)blocks.push({key:'places',title:'Matchs de classement',y:nextY,rounds:[]});
