@@ -150,3 +150,6 @@ nav button.selected{border-color:#7bd500;background:var(--neon);color:#11202e}
 .excelImport{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0;padding:14px 16px;border:1px solid #36546b;border-radius:12px;background:rgba(13,36,58,.75)}
 .excelImport strong{display:block;color:#e9f7ff;font-weight:750;margin-bottom:5px}.excelImport p{margin:0;color:#9db5c8;font-size:12px;max-width:570px;line-height:1.5}
 .excelImportButton{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;background:#b9ff35;color:#11263c;padding:10px 15px;border-radius:9px;font-weight:800;white-space:nowrap;position:relative;overflow:hidden}.excelImportButton:hover{filter:brightness(1.07)}.excelImportButton.disabled{opacity:.45;cursor:not-allowed}.excelImportButton input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+/* V18 — choix manuel d'une rencontre par terrain */
+.manualCourtSelect{display:block;width:calc(100% - 20px);margin:7px 10px 9px;padding:8px 10px;border:1px solid #446281;border-radius:8px;background:#142a45;color:#eff8ff;font-size:12px;cursor:pointer}.manualCourtSelect:focus{outline:2px solid #b9f33d}
