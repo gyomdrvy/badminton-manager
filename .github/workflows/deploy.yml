@@ -23,6 +23,20 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npm run build
+      # Déployer une version de test séparée sans remplacer la production.
+      - uses: actions/checkout@v4
+        with:
+          ref: test/v24-double-elimination-17
+          path: v24-test-source
+      - name: Build V24 test
+        run: |
+          cd v24-test-source
+          npm install
+          npm run build
+      - name: Include test app under /v24-test/
+        run: |
+          mkdir -p dist/v24-test
+          cp -R v24-test-source/dist/. dist/v24-test/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
