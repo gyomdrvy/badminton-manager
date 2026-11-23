@@ -324,17 +324,35 @@ function doubleAdvance(state){
 function matchStageLabel(m,matches){
  if(!m)return '';
  if(m.phase==='pool')return `Poule ${String.fromCharCode(65+m.pool)}`;
- if(m.place)return `Match pour la ${m.place}e place`;
- if(m.conditionalReset)return 'Finale décisive';
- if(m.track==='grand')return 'Grande finale';
+ if(m.track==='places'){
+  if(Number.isInteger(m.place))return `Classement · match pour les places ${m.place}–${m.place+1}`;
+  // Une demi-finale de classement peut alimenter deux finales :
+  // les gagnants jouent les meilleures places, les perdants les suivantes.
+  const children=matches.filter(x=>x.track==='places'&&(x.sourceA?.id===m.id||x.sourceB?.id===m.id));
+  const finalPlaces=new Set();
+  const visit=(node,seen=new Set())=>{
+   if(seen.has(node.id))return;
+   seen.add(node.id);
+   if(Number.isInteger(node.place)){finalPlaces.add(node.place);return;}
+   matches.filter(x=>x.track==='places'&&(x.sourceA?.id===node.id||x.sourceB?.id===node.id)).forEach(x=>visit(x,seen));
+  };
+  children.forEach(x=>visit(x));
+  const places=[...finalPlaces].sort((a,b)=>a-b);
+  const suffix=places.length?` · places ${places[0]} à ${places[places.length-1]+1}`:'';
+  const depth=Math.max(0,...children.map(x=>x.round-m.round));
+  return `${depth===1?'Demi-finale':'Tour'} de classement${suffix}`;
+ }
+ if(m.conditionalReset)return 'Finale décisive · double élimination';
+ if(m.track==='grand')return 'Grande finale · double élimination';
+ const branch=m.track==='upper'?'tableau principal':m.track==='lower'?'tableau de rattrapage':'tableau final';
  const same=matches.filter(x=>x.phase==='final'&&x.track===m.track&&x.round>=0);
  const rounds=[...new Set(same.map(x=>x.round))].sort((a,b)=>a-b);
- const idx=rounds.indexOf(m.round),remaining=rounds.length-idx-1;
- if(m.round<0)return 'Tour préliminaire';
- if(remaining===0)return m.track==='upper'?'Finale du tableau principal':'Finale du rattrapage';
- if(remaining===1)return 'Demi-finale';
- if(remaining===2)return 'Quart de finale';
- return `Tour ${m.round+1} · ${m.track==='lower'?'Rattrapage':'Tableau principal'}`;
+ const remaining=rounds.length-rounds.indexOf(m.round)-1;
+ if(m.round<0)return `Tour préliminaire · ${branch}`;
+ if(remaining===0)return `Finale · ${branch}`;
+ if(remaining===1)return `Demi-finale · ${branch}`;
+ if(remaining===2)return `Quart de finale · ${branch}`;
+ return `Tour ${m.round+1} · ${branch}`;
 }
 function DoubleBracket({matches,teams}){
  const viewport=useRef(null),[zoom,setZoom]=useState(.7);
